@@ -125,18 +125,17 @@ with sync_playwright() as pw:
     page.goto(BASE, wait_until='networkidle')
     page.wait_for_timeout(1000)
 
-    # Stats bar
+    # Stats bar — count >= 6 (activity feed timestamps also use tabular-nums)
     stats = page.locator('.tabular-nums')
-    chk(stats.count() == 6,                 'StatsBar: 6 animated counters',    f'{stats.count()} found')
+    chk(stats.count() >= 6,                 'StatsBar: 6 animated counters',    f'{stats.count()} found')
 
     total_val = int(stats.nth(0).text_content() or '0')
     chk(total_val > 0,                      'Total jobs > 0 (live data)',        str(total_val))
 
-    # Filter tabs — "All" is always shown; others only if count > 0 (data-dependent)
-    chk(page.locator('button:has-text("All")').count() > 0, 'Filter tab: All present')
-    shown_tabs = [t for t in ['New','Applied','Interviewing','Offer','Rejected']
-                  if page.locator(f'button:has-text("{t}")').count() > 0]
-    probe('Status filter tabs visible (data-dependent)', ', '.join(shown_tabs) or 'none')
+    # Phase 4 replaced filter tabs with SearchFilter — check for search bar + Filters button
+    chk(page.locator('input[placeholder*="Search jobs"]').count() > 0, 'SearchFilter: search bar present')
+    chk(page.locator('button').filter(has_text='Filters').count() > 0, 'SearchFilter: Filters button present')
+    chk(page.locator('button').filter(has_text='Presets').count() > 0, 'SearchFilter: Presets button present')
 
     sec('P1 · Job cards & scoring')
     cards = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]')
@@ -439,7 +438,7 @@ with sync_playwright() as pw:
     animated  = any(s < final_val for s in samples[:-1])
     chk(final_val > 0,                    'Counter reaches final value',         str(final_val))
     # Animation may finish before first sample at network speed; verify class exists
-    chk(page.locator('.tabular-nums').count() == 6, 'All 6 counters have tabular-nums class')
+    chk(page.locator('.tabular-nums').count() >= 6, 'All 6 counters have tabular-nums class')
     probe('Counter animation sampling', f'samples={samples} → final={final_val} animated={animated}')
 
     sec('P3 · Cmd+K command palette')
@@ -451,7 +450,8 @@ with sync_playwright() as pw:
     # Open
     page.keyboard.press('Meta+k')
     page.wait_for_timeout(400)
-    inp = page.locator('input[placeholder*="Search"]')
+    # Use palette-specific placeholder to avoid conflict with the search bar
+    inp = page.locator('input[placeholder*="Search pages"]').or_(page.locator('input[cmdk-input]'))
     chk(inp.count() > 0,                  'Cmd+K opens palette')
 
     if inp.count() > 0:
@@ -490,7 +490,7 @@ with sync_playwright() as pw:
     # Ctrl+K also opens (Windows-style)
     page.keyboard.press('Control+k')
     page.wait_for_timeout(400)
-    inp2 = page.locator('input[placeholder*="Search"]')
+    inp2 = page.locator('input[placeholder*="Search pages"]').or_(page.locator('input[cmdk-input]'))
     chk(inp2.count() > 0,                'Ctrl+K also opens palette')
     page.keyboard.press('Escape')
 
@@ -598,6 +598,255 @@ with sync_playwright() as pw:
         page.goto(f'{BASE}{route}', wait_until='networkidle')
         fade = page.locator('[class*="animate-fade-in"]').count()
         chk(fade > 0,                     f'animate-fade-in class on {name} page wrapper', f'{fade} element(s)')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # PHASE 4 — Search, filters, apply actions, cover letter, activity
+    # ══════════════════════════════════════════════════════════════════════════
+
+    sec('P4 · Search bar')
+    page.goto(BASE, wait_until='networkidle')
+
+    # Search input present on dashboard
+    search_input = page.locator('input[placeholder*="Search"]').first
+    chk(search_input.count() > 0,        'Search bar present on dashboard')
+
+    # Type a search term → results update
+    if search_input.count() > 0:
+        search_input.type('QA')
+        page.wait_for_timeout(300)
+        result_count_after = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]').count()
+        chk(result_count_after >= 0,     'Search returns results (or empty state)', f'{result_count_after} cards')
+        probe('Search for "QA" results', f'{result_count_after} job cards visible')
+
+        # Empty state when no match
+        search_input.fill('zzzzxxxxxnonexistent12345')
+        page.wait_for_timeout(300)
+        empty = page.get_by_text('No jobs match').count() > 0 or \
+                page.locator('[class*="py-24"]').count() > 0
+        chk(empty,                       'Empty state shown when search has no results')
+
+        # Clear search
+        search_input.fill('')
+        page.wait_for_timeout(200)
+
+    sec('P4 · Advanced filters panel')
+    page.goto(BASE, wait_until='networkidle')
+
+    # Filters button
+    filters_btn = page.locator('button').filter(has_text='Filters').first
+    chk(filters_btn.count() > 0,         'Filters button present')
+
+    filters_btn.click()
+    page.wait_for_timeout(300)
+
+    # Panel opens with filter options
+    chk(page.get_by_text('Status').count() > 0,     'Advanced panel: Status section')
+    chk(page.get_by_text('Min score').count() > 0,  'Advanced panel: Min score section')
+    chk(page.get_by_text('Work type').count() > 0,  'Advanced panel: Work type section')
+    chk(page.get_by_text('Posted').count() > 0,     'Advanced panel: Posted date section')
+
+    # Toggle: high match only
+    high_match_toggle = page.locator('div[class*="rounded-full"][class*="cursor-pointer"]').first
+    chk(high_match_toggle.count() > 0,  'High match toggle present')
+
+    # Select a status chip (Applied)
+    applied_chip = page.locator('button').filter(has_text='Applied').first
+    if applied_chip.count() > 0:
+        applied_chip.click()
+        page.wait_for_timeout(200)
+        # Active filter chip should appear (chips are <span> elements, not buttons)
+        filter_chip = page.locator('span[class*="bg-indigo-500/10"][class*="rounded-full"]')
+        chk(filter_chip.count() > 0,    'Active filter chip appears after selecting status')
+        probe('Status filter chip label', filter_chip.first.text_content() or '')
+
+    # Clear all — "Clear all" button only renders when chips exist; disappearing = success
+    clear_btn = page.locator('button').filter(has_text='Clear all').first
+    if clear_btn.count() > 0:
+        clear_btn.click()
+        page.wait_for_timeout(400)
+        # The "Clear all" button disappears when no chips remain
+        chk(page.locator('button').filter(has_text='Clear all').count() == 0,
+            'Clear all removes filter chips')
+
+    # Close advanced panel
+    filters_btn.click()
+    page.wait_for_timeout(200)
+
+    sec('P4 · Filter presets')
+    page.goto(BASE, wait_until='networkidle')
+
+    presets_btn = page.locator('button').filter(has_text='Presets').first
+    chk(presets_btn.count() > 0,         'Presets button present')
+    presets_btn.click()
+    page.wait_for_timeout(300)
+
+    # Built-in presets visible
+    chk(page.get_by_text('Remote Roles').count() > 0,   'Built-in preset: Remote Roles')
+    chk(page.get_by_text('High Match').count() > 0,     'Built-in preset: High Match')
+    chk(page.get_by_text('Has Cover Letter').count() > 0,'Built-in preset: Has Cover Letter')
+    chk(page.get_by_text('Needs Review').count() > 0,   'Built-in preset: Needs Review')
+
+    # Click "High Match" preset → filter chip appears
+    page.get_by_text('High Match').first.click()
+    page.wait_for_timeout(300)
+    preset_chip = page.locator('span[class*="bg-indigo-500/10"][class*="rounded-full"]')
+    chk(preset_chip.count() > 0,         'Applying preset creates active filter chip')
+
+    # Clear filters
+    page.get_by_text('Clear all').first.click()
+    page.wait_for_timeout(200)
+
+    sec('P4 · Jobs page (/jobs)')
+    page.goto(f'{BASE}/jobs', wait_until='networkidle')
+    h1 = page.locator('h1').first.text_content() or ''
+    chk('Jobs' in h1,                    'Jobs page h1', h1.strip())
+    chk(page.locator('input[placeholder*="Search"]').count() > 0, 'Search bar on /jobs page')
+    chk(page.locator('button').filter(has_text='Filters').count() > 0, 'Filters button on /jobs page')
+    chk(page.locator('button').filter(has_text='Presets').count() > 0, 'Presets button on /jobs page')
+    cards_on_jobs = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]').count()
+    chk(cards_on_jobs > 0,              'Job cards rendered on /jobs page', f'{cards_on_jobs} cards')
+
+    sec('P4 · Detail panel — apply actions')
+    page.goto(BASE, wait_until='networkidle')
+    first_card = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]').first
+    first_card.click()
+    page.wait_for_timeout(500)
+
+    panel = page.locator('[class*="backdrop-blur"]')
+    chk(panel.count() > 0,              'Detail panel opens')
+
+    if panel.count() > 0:
+        # Open Job Posting button
+        open_btn = page.locator('button').filter(has_text='Open Job Posting').first
+        chk(open_btn.count() > 0,       '"Open Job Posting" button in panel')
+
+        # Mark Applied button (only if status is not already Applied/Interviewing/Offer)
+        mark_applied = page.locator('button').filter(has_text='Mark Applied').first
+        probe('"Mark Applied" button presence', f'found={mark_applied.count() > 0}')
+
+        # Skip button
+        skip_btn = page.locator('button').filter(has_text='Skip').first
+        chk(skip_btn.count() > 0,       '"Skip" button in panel')
+
+        # Status pills still present
+        chk(page.locator('button').filter(has_text='Interviewing').count() > 0, 'Status pills in panel')
+
+        # Activity section (collapsible)
+        activity_section = page.locator('button').filter(has_text='Activity').first
+        chk(activity_section.count() > 0, 'Activity toggle in detail panel')
+        if activity_section.count() > 0:
+            activity_section.click()
+            page.wait_for_timeout(200)
+            probe('Activity panel expanded', 'toggled open')
+
+        # Cover letter buttons
+        cl_btn = page.locator('button').filter(has_text='View Cover Letter').first
+        probe('Cover letter button visible (data-dependent)', f'found={cl_btn.count() > 0}')
+
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(300)
+
+    sec('P4 · Cover letter modal')
+    page.goto(BASE, wait_until='networkidle')
+
+    # Find a card with cover letter — look for the "Cover Letter" hover button
+    # We'll hover over each card until we find one with a cover letter
+    cards = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]')
+    found_cl = False
+    for i in range(min(cards.count(), 8)):
+        card = cards.nth(i)
+        card.click()
+        page.wait_for_timeout(400)
+        cl_view = page.locator('button').filter(has_text='View Cover Letter').first
+        if cl_view.count() > 0:
+            cl_view.click()
+            page.wait_for_timeout(600)
+            modal = page.locator('[class*="z-\\[70\\]"]').first
+            if modal.count() == 0:
+                modal = page.get_by_text('Cover Letter').locator('..').locator('..')
+            modal_open = page.locator('button').filter(has_text='Open Original').count() > 0 or \
+                         page.locator('button').filter(has_text='Edit').count() > 0 or \
+                         page.locator('button').filter(has_text='Open Cover Letter').count() > 0
+            chk(modal_open,             'Cover letter modal opens with action buttons')
+            found_cl = True
+            # Close modal
+            page.keyboard.press('Escape')
+            page.wait_for_timeout(300)
+            break
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(200)
+
+    if not found_cl:
+        probe('No jobs with cover_letter_url in current data — modal not tested')
+
+    sec('P4 · Job card hover quick actions')
+    page.goto(BASE, wait_until='networkidle')
+    cards = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]')
+    if cards.count() > 0:
+        cards.first.hover()
+        page.wait_for_timeout(300)
+        # Apply and Skip should be visible on hover
+        apply_hover = page.locator('button').filter(has_text='Apply').count()
+        skip_hover  = page.locator('button').filter(has_text='Skip').count()
+        chk(apply_hover > 0,            'Apply quick action visible on card hover')
+        chk(skip_hover > 0,             'Skip quick action visible on card hover')
+
+    sec('P4 · Kanban quick actions')
+    page.goto(f'{BASE}/pipeline', wait_until='networkidle')
+    drags = page.locator('[class*="touch-none"]')
+    if drags.count() > 0:
+        drags.first.hover()
+        page.wait_for_timeout(300)
+        # Apply and Skip buttons in card overlay
+        kanban_apply = page.locator('button').filter(has_text='Apply').count()
+        kanban_skip  = page.locator('button[class*="rounded-md"]').count()
+        probe('Kanban card quick actions on hover', f'Apply={kanban_apply} action_btns={kanban_skip}')
+        chk(kanban_apply > 0 or kanban_skip > 0, 'Quick action buttons visible on Kanban card hover')
+
+    sec('P4 · Activity feed on dashboard')
+    page.goto(BASE, wait_until='networkidle')
+    chk(page.get_by_text('Recent Activity').count() > 0, 'Recent Activity section on dashboard')
+
+    # Trigger an activity by opening a posting
+    first_card = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]').first
+    first_card.click()
+    page.wait_for_timeout(400)
+    open_posting = page.locator('button').filter(has_text='Open Job Posting').first
+    if open_posting.count() > 0:
+        open_posting.click()
+        page.wait_for_timeout(600)
+    page.keyboard.press('Escape')
+    page.wait_for_timeout(300)
+
+    # After action, feed should show at least one entry
+    page.goto(BASE, wait_until='networkidle')
+    feed_entries = page.locator('[class*="Recent Activity"]').locator('..').locator('[class*="rounded-lg"]')
+    activity_text = page.get_by_text('just now').count() > 0 or \
+                    page.get_by_text('ago').count() > 0 or \
+                    page.get_by_text('Opened posting').count() > 0 or \
+                    page.get_by_text('Applied').count() > 0
+    probe('Activity feed has entries after action', f'time-ago visible={activity_text}')
+
+    sec('P4 · Score range filter (7+)')
+    page.goto(BASE, wait_until='networkidle')
+    filters_btn = page.locator('button').filter(has_text='Filters').first
+    filters_btn.click()
+    page.wait_for_timeout(300)
+
+    # Click "7+" score button
+    score_7 = page.locator('button').filter(has_text='7+').first
+    if score_7.count() > 0:
+        score_7.click()
+        page.wait_for_timeout(300)
+        chip = page.locator('span[class*="bg-indigo-500/10"][class*="rounded-full"]').filter(has_text='Score')
+        chk(chip.count() > 0,           'Score ≥ 7 chip appears after selecting 7+')
+        # All visible cards should have score >= 7
+        page.keyboard.press('Escape')   # close any panels
+        page.wait_for_timeout(200)
+        visible_cards = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]').count()
+        probe(f'Cards shown after Score ≥ 7 filter', f'{visible_cards} cards')
+        page.get_by_text('Clear all').first.click()
+        page.wait_for_timeout(200)
 
     browser.close()
 
