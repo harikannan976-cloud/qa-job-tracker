@@ -212,24 +212,31 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
           </section>
 
           {/* Cover letter actions */}
-          {job.cover_letter_url && (
-            <section className="flex gap-2">
-              <button
-                onClick={handleViewCoverLetter}
-                className="flex-1 flex items-center justify-center gap-1.5 bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 py-2 rounded-xl text-[12px] font-medium transition-all"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                View Cover Letter
-              </button>
-              <button
-                onClick={handleCopyCoverLetter}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 transition-all"
-              >
-                {copiedCL ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedCL ? 'Copied!' : 'Copy'}
-              </button>
-            </section>
-          )}
+          <section className="flex gap-2">
+            {job.cover_letter_url ? (
+              <>
+                <button
+                  onClick={handleViewCoverLetter}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 py-2 rounded-xl text-[12px] font-medium transition-all"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  View Cover Letter
+                </button>
+                <button
+                  onClick={handleCopyCoverLetter}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 transition-all"
+                >
+                  {copiedCL ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedCL ? 'Copied!' : 'Copy'}
+                </button>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center gap-2 px-3.5 py-2 bg-[#0d0d14] border border-[#1a1a26] rounded-xl">
+                <FileText className="w-3.5 h-3.5 text-zinc-700 flex-shrink-0" />
+                <span className="text-[12px] text-zinc-700">No cover letter generated yet</span>
+              </div>
+            )}
+          </section>
 
           {/* AI Assessment */}
           {job.ai_reasoning && (
