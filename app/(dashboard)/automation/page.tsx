@@ -67,14 +67,30 @@ const STEP_COLORS: Record<string, { bg: string; text: string; border: string }> 
   pink:    { bg: 'bg-pink-500/10',    text: 'text-pink-400',    border: 'border-pink-500/20' },
 }
 
+// ─── Webhook URLs (client-side fetch direct to local n8n) ────────────────────
+
+const N8N_TEST  = process.env.NEXT_PUBLIC_N8N_WEBHOOK_TEST  ?? 'http://localhost:5678/webhook/trigger-test'
+const N8N_DAILY = process.env.NEXT_PUBLIC_N8N_WEBHOOK_DAILY ?? 'http://localhost:5678/webhook/trigger-daily'
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function AutomationPage() {
   const [triggering, setTriggering] = useState(false)
+  const [mode,       setMode]       = useState<'test' | 'daily'>('test')
 
-  function handleTrigger() {
+  async function handleTrigger() {
     setTriggering(true)
-    toast.info('Manual trigger is demo-only. Connect n8n webhook to enable.', { duration: 4000 })
+    const url = mode === 'test' ? N8N_TEST : N8N_DAILY
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      if (res.ok) {
+        toast.success(mode === 'test' ? 'Test run started — 8 sample jobs → scoring → Airtable' : 'Daily pipeline started — fetching live jobs now', { duration: 5000 })
+      } else {
+        toast.error(`n8n returned ${res.status} — check the workflow is active`, { duration: 4000 })
+      }
+    } catch {
+      toast.error('Could not reach n8n at localhost:5678 — make sure it\'s running', { duration: 5000 })
+    }
     setTimeout(() => setTriggering(false), 2000)
   }
 
@@ -87,14 +103,31 @@ export default function AutomationPage() {
           <h1 className="text-2xl font-semibold text-white tracking-tight">Automation</h1>
           <p className="text-[13px] text-zinc-500 mt-1">n8n workflow status, run history, and cost tracking · demo data</p>
         </div>
-        <button
-          onClick={handleTrigger}
-          disabled={triggering}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
-        >
-          <Play className={`w-3.5 h-3.5 ${triggering ? 'animate-pulse' : ''}`} />
-          {triggering ? 'Triggering…' : 'Run Workflow Now'}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Mode toggle */}
+          <div className="flex items-center bg-[#111118] border border-[#1f1f2e] rounded-xl p-1 text-[12px] font-medium">
+            <button
+              onClick={() => setMode('test')}
+              className={`px-3 py-1.5 rounded-lg transition-all ${mode === 'test' ? 'bg-indigo-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Test (8 jobs)
+            </button>
+            <button
+              onClick={() => setMode('daily')}
+              className={`px-3 py-1.5 rounded-lg transition-all ${mode === 'daily' ? 'bg-indigo-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Full run
+            </button>
+          </div>
+          <button
+            onClick={handleTrigger}
+            disabled={triggering}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+          >
+            <Play className={`w-3.5 h-3.5 ${triggering ? 'animate-pulse' : ''}`} />
+            {triggering ? 'Triggering…' : 'Run Workflow Now'}
+          </button>
+        </div>
       </div>
 
       {/* Status cards */}
