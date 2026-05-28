@@ -3,33 +3,35 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
+import { logActivity } from '@/lib/activity'
+import { useJobSearch } from '@/hooks/useJobSearch'
 import StatsBar from './StatsBar'
 import JobCard from './JobCard'
 import JobDetailPanel from './JobDetailPanel'
-
-const ALL_STATUSES = ['All', 'New', 'Applied', 'Interviewing', 'Offer', 'Rejected', 'Skipped'] as const
-type Filter = typeof ALL_STATUSES[number]
+import SearchFilter from './SearchFilter'
 
 const STATUS_TOAST: Record<string, string> = {
   New:          'Moved back to New',
-  Applied:      'Marked as Applied',
+  Applied:      'Marked as Applied ✓',
   Interviewing: 'Moved to Interviewing',
-  Offer:        '🎉 Marked as Offer',
+  Offer:        '🎉 Marked as Offer!',
   Rejected:     'Marked as Rejected',
   Skipped:      'Job skipped',
 }
 
-interface Props { jobs: Job[] }
+interface Props {
+  jobs:        Job[]
+  showSearch?: boolean
+}
 
-export default function JobBoard({ jobs: initialJobs }: Props) {
-  const [jobs, setJobs] = useState<Job[]>(initialJobs)
-  const [filter, setFilter] = useState<Filter>('All')
+export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props) {
+  const [jobs,        setJobs]        = useState<Job[]>(initialJobs)
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
-  const [focusedIdx, setFocusedIdx] = useState<number>(-1)
+  const [focusedIdx,  setFocusedIdx]  = useState<number>(-1)
 
-  const filtered = filter === 'All' ? jobs : jobs.filter(j => j.status === filter)
-  const tabCount = (f: Filter) => f === 'All' ? jobs.length : jobs.filter(j => j.status === f).length
+  const { filtered, query, setQuery, filters, setFilters, activeCount, clearAll } = useJobSearch(jobs)
 
+  // j/k/Enter/Esc keyboard nav
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName
@@ -54,71 +56,79 @@ export default function JobBoard({ jobs: initialJobs }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [filtered, focusedIdx])
 
-  // Reset focus when filter changes
-  useEffect(() => { setFocusedIdx(-1) }, [filter])
+  useEffect(() => { setFocusedIdx(-1) }, [query, filters])
 
-  async function handleStatusChange(recordId: string, status: string) {
+  const handleStatusChange = useCallback(async (recordId: string, status: string) => {
+    const job = jobs.find(j => j.id === recordId)
     setJobs(prev => prev.map(j => j.id === recordId ? { ...j, status: status as Job['status'] } : j))
     if (selectedJob?.id === recordId) {
       setSelectedJob(prev => prev ? { ...prev, status: status as Job['status'] } : null)
     }
-    toast.success(STATUS_TOAST[status] ?? `Status updated to ${status}`, { duration: 2500 })
+    toast.success(STATUS_TOAST[status] ?? `Status → ${status}`, { duration: 2500 })
+    if (job && status !== 'Applied') {
+      logActivity({ type: 'status_change', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name, detail: status })
+    }
     try {
       await fetch('/api/jobs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recordId, status }),
       })
-    } catch {
-      // optimistic update stays
-    }
-  }
+    } catch { /* optimistic stays */ }
+  }, [jobs, selectedJob])
 
   return (
     <div>
       <StatsBar jobs={jobs} />
 
-      {/* Filter tabs */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        {ALL_STATUSES.map(f => {
-          const count = tabCount(f)
-          if (count === 0 && f !== 'All') return null
-          const active = filter === f
-          return (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-all duration-150 border ${
-                active
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/15'
-                  : 'bg-[#14141e] border-[#252535] text-zinc-400 hover:text-zinc-200 hover:border-[#3a3a4e]'
-              }`}
-            >
-              {f}
-              <span className={`ml-1.5 text-[11px] ${active ? 'text-indigo-200' : 'text-zinc-600'}`}>
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {showSearch && (
+        <SearchFilter
+          jobs={jobs}
+          query={query}
+          filters={filters}
+          activeCount={activeCount}
+          onQueryChange={setQuery}
+          onFiltersChange={setFilters}
+          onClearAll={clearAll}
+        />
+      )}
 
-      {/* Job list */}
+      {/* Empty state */}
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <p className="text-[13px] text-zinc-600">No jobs in this category</p>
+          <div className="w-12 h-12 rounded-2xl bg-[#111118] border border-[#1f1f2e] flex items-center justify-center mb-4">
+            <span className="text-2xl">🔍</span>
+          </div>
+          <p className="text-[14px] font-medium text-zinc-400 mb-1">No jobs match your filters</p>
+          <p className="text-[13px] text-zinc-600 mb-4">Try adjusting your search or clearing filters</p>
+          {activeCount > 0 && (
+            <button
+              onClick={clearAll}
+              className="px-4 py-2 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 text-[13px] rounded-xl hover:bg-indigo-600/20 transition-colors"
+            >
+              Clear all filters
+            </button>
+          )}
         </div>
       ) : (
-        <div className="space-y-2.5">
-          {filtered.map((job, i) => (
-            <div
-              key={job.id}
-              className={focusedIdx === i ? 'ring-1 ring-indigo-500/40 rounded-xl' : ''}
-            >
-              <JobCard job={job} onSelect={(j) => { setSelectedJob(j); setFocusedIdx(i) }} />
-            </div>
-          ))}
-        </div>
+        <>
+          {activeCount > 0 && (
+            <p className="text-[12px] text-zinc-600 mb-3">
+              Showing <span className="text-zinc-400 font-medium">{filtered.length}</span> of {jobs.length} jobs
+            </p>
+          )}
+          <div className="space-y-2.5">
+            {filtered.map((job, i) => (
+              <div key={job.id} className={focusedIdx === i ? 'ring-1 ring-indigo-500/40 rounded-xl' : ''}>
+                <JobCard
+                  job={job}
+                  onSelect={j => { setSelectedJob(j); setFocusedIdx(i) }}
+                  onStatusChange={handleStatusChange}
+                />
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {selectedJob && (

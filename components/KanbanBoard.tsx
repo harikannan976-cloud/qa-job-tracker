@@ -9,6 +9,8 @@ import { useDroppable, useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
+import { logActivity } from '@/lib/activity'
+import { ExternalLink, X } from 'lucide-react'
 import JobDetailPanel from './JobDetailPanel'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -99,23 +101,58 @@ function CardContent({ job, dim = false }: { job: Job; dim?: boolean }) {
 
 // ─── Draggable card ───────────────────────────────────────────────────────────
 
-function KanbanCard({ job, onSelect }: { job: Job; onSelect: (j: Job) => void }) {
+function KanbanCard({ job, onSelect, onStatusChange }: {
+  job: Job
+  onSelect: (j: Job) => void
+  onStatusChange: (id: string, status: string) => void
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: job.id,
     data: { job },
   })
 
-  const style = transform
-    ? { transform: CSS.Translate.toString(transform) }
-    : undefined
+  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined
 
   return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes} className="touch-none">
+    <div ref={setNodeRef} style={style} {...listeners} {...attributes} className="touch-none group/card">
       <div
-        className="cursor-grab active:cursor-grabbing"
-        onClick={(e) => { e.stopPropagation(); if (!isDragging) onSelect(job) }}
+        className="cursor-grab active:cursor-grabbing relative"
+        onClick={e => { e.stopPropagation(); if (!isDragging) onSelect(job) }}
       >
         <CardContent job={job} dim={isDragging} />
+        {/* Quick action bar — appears on hover, doesn't interfere with drag */}
+        {!isDragging && (
+          <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
+            {job.job_apply_link && job.status !== 'Applied' && (
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation()
+                  window.open(job.job_apply_link, '_blank', 'noopener,noreferrer')
+                  logActivity({ type: 'posting_opened', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
+                  onStatusChange(job.id, 'Applied')
+                }}
+                className="flex items-center gap-1 px-2 py-1 bg-indigo-600/90 hover:bg-indigo-500 text-white text-[11px] font-medium rounded-md transition-colors"
+              >
+                <ExternalLink className="w-2.5 h-2.5" />
+                Apply
+              </button>
+            )}
+            {job.status !== 'Skipped' && (
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation()
+                  logActivity({ type: 'skipped', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
+                  onStatusChange(job.id, 'Skipped')
+                }}
+                className="flex items-center gap-1 px-2 py-1 bg-[#1a1a26]/90 hover:bg-red-500/20 border border-[#2e2e42] hover:border-red-500/30 text-zinc-500 hover:text-red-400 text-[11px] font-medium rounded-md transition-all"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -124,16 +161,17 @@ function KanbanCard({ job, onSelect }: { job: Job; onSelect: (j: Job) => void })
 // ─── Droppable column ─────────────────────────────────────────────────────────
 
 function KanbanColumn({
-  status, label, color, dot, jobs, isOver, onSelect,
+  status, label, color, dot, jobs, isOver, onSelect, onStatusChange,
 }: {
   status: string; label: string; color: string; dot: string
-  jobs: Job[]; isOver: boolean; onSelect: (j: Job) => void
+  jobs: Job[]; isOver: boolean
+  onSelect: (j: Job) => void
+  onStatusChange: (id: string, status: string) => void
 }) {
   const { setNodeRef } = useDroppable({ id: status })
 
   return (
     <div className="flex-shrink-0 w-[240px] flex flex-col">
-      {/* Column header */}
       <div className="flex items-center gap-2 mb-3 px-1">
         <span className={`w-2 h-2 rounded-full ${dot}`} />
         <span className={`text-[12px] font-semibold uppercase tracking-widest ${color}`}>{label}</span>
@@ -141,12 +179,11 @@ function KanbanColumn({
           {jobs.length}
         </span>
       </div>
-
-      {/* Drop zone */}
       <div
         ref={setNodeRef}
-        className={`flex-1 rounded-xl min-h-[200px] p-2 space-y-2 transition-all duration-150
-          ${isOver ? 'bg-indigo-500/5 ring-1 ring-indigo-500/20' : 'bg-[#0d0d14]'}`}
+        className={`flex-1 rounded-xl min-h-[200px] p-2 space-y-2 transition-all duration-150 ${
+          isOver ? 'bg-indigo-500/5 ring-1 ring-indigo-500/20' : 'bg-[#0d0d14]'
+        }`}
       >
         {jobs.length === 0 && !isOver && (
           <div className="flex items-center justify-center h-24">
@@ -154,7 +191,7 @@ function KanbanColumn({
           </div>
         )}
         {jobs.map(job => (
-          <KanbanCard key={job.id} job={job} onSelect={onSelect} />
+          <KanbanCard key={job.id} job={job} onSelect={onSelect} onStatusChange={onStatusChange} />
         ))}
       </div>
     </div>
@@ -172,9 +209,13 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
   const activeJob = activeJobId ? jobs.find(j => j.id === activeJobId) ?? null : null
 
   const handleStatusChange = useCallback(async (recordId: string, status: string) => {
+    const job = jobs.find(j => j.id === recordId)
     setJobs(prev => prev.map(j => j.id === recordId ? { ...j, status: status as Job['status'] } : j))
     if (selectedJob?.id === recordId) setSelectedJob(prev => prev ? { ...prev, status: status as Job['status'] } : null)
     toast.success(STATUS_TOAST[status] ?? `Moved to ${status}`, { duration: 2000 })
+    if (job) {
+      logActivity({ type: 'status_change', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name, detail: status })
+    }
     try {
       await fetch('/api/jobs', {
         method: 'PATCH',
@@ -182,7 +223,7 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
         body: JSON.stringify({ recordId, status }),
       })
     } catch { /* optimistic stays */ }
-  }, [selectedJob])
+  }, [jobs, selectedJob])
 
   function onDragStart(e: DragStartEvent) {
     setActiveJobId(e.active.id as string)
@@ -231,6 +272,7 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
                 jobs={columnJobs(col.status)}
                 isOver={overId === col.status}
                 onSelect={setSelectedJob}
+                onStatusChange={handleStatusChange}
               />
             ))}
           </div>
