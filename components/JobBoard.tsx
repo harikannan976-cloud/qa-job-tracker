@@ -68,13 +68,12 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
     if (job && status !== 'Applied') {
       logActivity({ type: 'status_change', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name, detail: status })
     }
-    try {
-      await fetch('/api/jobs', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId, status }),
-      })
-    } catch { /* optimistic stays */ }
+    const res = await fetch('/api/jobs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recordId, status }),
+    })
+    if (!res.ok) throw new Error('save_failed')
   }, [jobs, selectedJob])
 
   return (

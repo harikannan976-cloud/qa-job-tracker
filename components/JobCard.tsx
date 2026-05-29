@@ -1,13 +1,14 @@
 'use client'
 
-import { ExternalLink, FileText, X } from 'lucide-react'
+import { useState } from 'react'
+import { ExternalLink, FileText, X, Loader2 } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import { logActivity } from '@/lib/activity'
 
 interface Props {
   job:            Job
   onSelect:       (job: Job) => void
-  onStatusChange: (id: string, status: string) => void
+  onStatusChange: (id: string, status: string) => Promise<void> | void
 }
 
 function scoreStyle(score: number) {
@@ -30,6 +31,9 @@ function statusStyle(status: Job['status']) {
 }
 
 export default function JobCard({ job, onSelect, onStatusChange }: Props) {
+  const [savingApply, setSavingApply] = useState(false)
+  const [savingSkip,  setSavingSkip]  = useState(false)
+
   const location   = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ')
   const postedDate = job.job_posted_at
     ? new Date(job.job_posted_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
@@ -37,18 +41,23 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
   const { badge, accent } = scoreStyle(job.ai_score)
   const isElite = job.ai_score >= 9
 
-  function handleApply(e: React.MouseEvent) {
+  async function handleApply(e: React.MouseEvent) {
     e.stopPropagation()
-    if (!job.job_apply_link) return
+    if (!job.job_apply_link || savingApply) return
     window.open(job.job_apply_link, '_blank', 'noopener,noreferrer')
     logActivity({ type: 'posting_opened', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-    if (job.status === 'New') onStatusChange(job.id, 'Applied')
+    if (job.status === 'New') {
+      setSavingApply(true)
+      try { await onStatusChange(job.id, 'Applied') } finally { setSavingApply(false) }
+    }
   }
 
-  function handleSkip(e: React.MouseEvent) {
+  async function handleSkip(e: React.MouseEvent) {
     e.stopPropagation()
+    if (savingSkip) return
+    setSavingSkip(true)
     logActivity({ type: 'skipped', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-    onStatusChange(job.id, 'Skipped')
+    try { await onStatusChange(job.id, 'Skipped') } finally { setSavingSkip(false) }
   }
 
   return (
@@ -98,9 +107,10 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
           {job.job_apply_link && (
             <button
               onClick={handleApply}
-              className="flex items-center gap-1.5 text-[12px] bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              disabled={savingApply}
+              className="flex items-center gap-1.5 text-[12px] bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
-              <ExternalLink className="w-3 h-3" />
+              {savingApply ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
               Apply
             </button>
           )}
@@ -116,9 +126,10 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
           {job.status !== 'Skipped' && (
             <button
               onClick={handleSkip}
-              className="flex items-center gap-1.5 text-[12px] bg-[#1e1e2e] hover:bg-red-500/10 border border-[#2e2e44] hover:border-red-500/20 text-zinc-600 hover:text-red-400 px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
+              disabled={savingSkip}
+              className="flex items-center gap-1.5 text-[12px] bg-[#1e1e2e] hover:bg-red-500/10 border border-[#2e2e44] hover:border-red-500/20 text-zinc-600 hover:text-red-400 disabled:opacity-60 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
             >
-              <X className="w-3 h-3" />
+              {savingSkip ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
               Skip
             </button>
           )}

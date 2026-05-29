@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { ExternalLink, Copy, Check, FileText, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { ExternalLink, Copy, Check, FileText, X, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
 import { logActivity, getActivity, activityLabel, timeAgo, ActivityEntry } from '@/lib/activity'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
@@ -56,14 +57,15 @@ function scoreBadgeStyle(score: number) {
 interface Props {
   job:            Job
   onClose:        () => void
-  onStatusChange: (recordId: string, status: string) => void
+  onStatusChange: (recordId: string, status: string) => Promise<void> | void
 }
 
 export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) {
   const [showCoverLetter, setShowCoverLetter] = useState(false)
   const [copiedCL,        setCopiedCL]        = useState(false)
   const [showTimeline,    setShowTimeline]    = useState(false)
-  const [jobActivity,     setJobActivity]    = useState<ActivityEntry[]>([])
+  const [jobActivity,     setJobActivity]     = useState<ActivityEntry[]>([])
+  const [isSaving,        setIsSaving]        = useState(false)
 
   const panelRef = useRef<HTMLDivElement>(null)
   useFocusTrap(panelRef)
@@ -84,21 +86,41 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
     return () => window.removeEventListener('qa_activity', load)
   }, [job.id])
 
-  function handleOpenPosting() {
+  // Applied date — read from full activity log (not just the 5-entry slice)
+  const appliedDateStr = useMemo(() => {
+    const entry = getActivity().find(e => e.jobId === job.id && e.type === 'applied')
+    if (!entry) return null
+    return new Date(entry.ts).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id, jobActivity])
+
+  async function runStatusChange(status: string) {
+    if (isSaving) return
+    setIsSaving(true)
+    try {
+      await onStatusChange(job.id, status)
+    } catch {
+      toast.error('Could not save — please try again')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function handleOpenPosting() {
     if (!job.job_apply_link) return
     window.open(job.job_apply_link, '_blank', 'noopener,noreferrer')
     logActivity({ type: 'posting_opened', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-    if (job.status === 'New') onStatusChange(job.id, 'Applied')
+    if (job.status === 'New') await runStatusChange('Applied')
   }
 
-  function handleMarkApplied() {
+  async function handleMarkApplied() {
     logActivity({ type: 'applied', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-    onStatusChange(job.id, 'Applied')
+    await runStatusChange('Applied')
   }
 
-  function handleSkip() {
+  async function handleSkip() {
     logActivity({ type: 'skipped', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-    onStatusChange(job.id, 'Skipped')
+    await runStatusChange('Skipped')
     onClose()
   }
 
@@ -174,11 +196,25 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
             <div className="flex-1 min-w-0">
               <p className="text-[11px] text-zinc-600 uppercase tracking-wider font-medium mb-2">Status</p>
               <div className="flex flex-wrap gap-1.5">
-                {STATUSES.map(s => (
+                {STATUSES.filter(s => s !== 'Rejected' && s !== 'Skipped').map(s => (
                   <button
                     key={s}
-                    onClick={() => onStatusChange(job.id, s)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-150 ${
+                    disabled={isSaving}
+                    onClick={() => runStatusChange(s)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
+                      job.status === s ? `${STATUS_STYLE[s]} scale-[1.05]` : 'bg-transparent border-[#252535] text-zinc-600 hover:border-[#3a3a4e] hover:text-zinc-400'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+                <span className="w-px h-5 bg-[#252535] self-center mx-0.5" />
+                {(['Rejected', 'Skipped'] as Job['status'][]).map(s => (
+                  <button
+                    key={s}
+                    disabled={isSaving}
+                    onClick={() => runStatusChange(s)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
                       job.status === s ? `${STATUS_STYLE[s]} scale-[1.05]` : 'bg-transparent border-[#252535] text-zinc-600 hover:border-[#3a3a4e] hover:text-zinc-400'
                     }`}
                   >
@@ -186,6 +222,13 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
                   </button>
                 ))}
               </div>
+              {/* Applied date */}
+              <p className="text-[11px] mt-2">
+                <span className="text-zinc-700">Applied: </span>
+                <span className={appliedDateStr ? 'text-zinc-400' : 'text-zinc-700 italic'}>
+                  {appliedDateStr ?? 'Not applied yet'}
+                </span>
+              </p>
             </div>
           </div>
 
@@ -194,9 +237,10 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
             {job.job_apply_link && (
               <button
                 onClick={handleOpenPosting}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl text-[13px] font-semibold transition-colors"
+                disabled={isSaving}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white py-2.5 rounded-xl text-[13px] font-semibold transition-colors shadow-[0_0_20px_rgba(99,102,241,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
+                {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
                 Open Job Posting
               </button>
             )}
@@ -205,18 +249,20 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
               {job.status !== 'Applied' && job.status !== 'Interviewing' && job.status !== 'Offer' && (
                 <button
                   onClick={handleMarkApplied}
-                  className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/20 hover:border-emerald-600/40 text-emerald-400 py-2 rounded-xl text-[12px] font-medium transition-all"
+                  disabled={isSaving}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/20 hover:border-emerald-600/40 text-emerald-400 py-2 rounded-xl text-[12px] font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
                 >
-                  <Check className="w-3.5 h-3.5" />
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                   Mark Applied
                 </button>
               )}
               {job.status !== 'Skipped' && (
                 <button
                   onClick={handleSkip}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#14141e] border border-[#1f1f2e] text-zinc-600 hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/5 transition-all"
+                  disabled={isSaving}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#14141e] border border-[#1f1f2e] text-zinc-600 hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/5 transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
                 >
-                  Skip
+                  {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Skip'}
                 </button>
               )}
             </div>
@@ -228,14 +274,16 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
               <>
                 <button
                   onClick={handleViewCoverLetter}
-                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 py-2 rounded-xl text-[12px] font-medium transition-all"
+                  disabled={isSaving}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 py-2 rounded-xl text-[12px] font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   View Cover Letter
                 </button>
                 <button
                   onClick={handleCopyCoverLetter}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 transition-all"
+                  disabled={isSaving}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {copiedCL ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   {copiedCL ? 'Copied!' : 'Copy'}

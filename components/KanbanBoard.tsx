@@ -10,7 +10,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
 import { logActivity } from '@/lib/activity'
-import { ExternalLink, X, RotateCcw } from 'lucide-react'
+import { ExternalLink, X, RotateCcw, Loader2 } from 'lucide-react'
 import JobDetailPanel from './JobDetailPanel'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -104,10 +104,11 @@ function CardContent({ job, dim = false, skipped = false }: { job: Job; dim?: bo
 
 // ─── Draggable card ───────────────────────────────────────────────────────────
 
-function KanbanCard({ job, onSelect, onStatusChange }: {
+function KanbanCard({ job, onSelect, onStatusChange, isSaving = false }: {
   job: Job
   onSelect: (j: Job) => void
-  onStatusChange: (id: string, status: string) => void
+  onStatusChange: (id: string, status: string) => Promise<void> | void
+  isSaving?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: job.id,
@@ -123,6 +124,11 @@ function KanbanCard({ job, onSelect, onStatusChange }: {
         onClick={e => { e.stopPropagation(); if (!isDragging) onSelect(job) }}
       >
         <CardContent job={job} dim={isDragging} skipped={job.status === 'Skipped'} />
+        {isSaving && !isDragging && (
+          <div className="absolute inset-0 rounded-xl bg-[#0d0d14]/70 flex items-center justify-center pointer-events-none">
+            <Loader2 className="w-4 h-4 text-zinc-400 animate-spin" />
+          </div>
+        )}
         {/* Quick action bar — appears on hover, doesn't interfere with drag */}
         {!isDragging && (
           <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
@@ -178,12 +184,12 @@ function KanbanCard({ job, onSelect, onStatusChange }: {
 // ─── Droppable column ─────────────────────────────────────────────────────────
 
 function KanbanColumn({
-  status, label, color, dot, muted, jobs, isOver, onSelect, onStatusChange,
+  status, label, color, dot, muted, jobs, isOver, savingId, onSelect, onStatusChange,
 }: {
   status: string; label: string; color: string; dot: string; muted?: boolean
-  jobs: Job[]; isOver: boolean
+  jobs: Job[]; isOver: boolean; savingId: string | null
   onSelect: (j: Job) => void
-  onStatusChange: (id: string, status: string) => void
+  onStatusChange: (id: string, status: string) => Promise<void> | void
 }) {
   const { setNodeRef } = useDroppable({ id: status })
 
@@ -213,7 +219,7 @@ function KanbanColumn({
           </div>
         )}
         {jobs.map(job => (
-          <KanbanCard key={job.id} job={job} onSelect={onSelect} onStatusChange={onStatusChange} />
+          <KanbanCard key={job.id} job={job} onSelect={onSelect} onStatusChange={onStatusChange} isSaving={savingId === job.id} />
         ))}
       </div>
     </div>
@@ -223,14 +229,15 @@ function KanbanColumn({
 // ─── Main board ───────────────────────────────────────────────────────────────
 
 export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
-  const [jobs, setJobs] = useState<Job[]>(initialJobs)
+  const [jobs,        setJobs]        = useState<Job[]>(initialJobs)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
-  const [overId, setOverId] = useState<string | null>(null)
+  const [overId,      setOverId]      = useState<string | null>(null)
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
+  const [savingId,    setSavingId]    = useState<string | null>(null)
 
   const activeJob = activeJobId ? jobs.find(j => j.id === activeJobId) ?? null : null
 
-  const handleStatusChange = useCallback(async (recordId: string, status: string) => {
+  const handleStatusChange = useCallback(async (recordId: string, status: string): Promise<void> => {
     const job = jobs.find(j => j.id === recordId)
     setJobs(prev => prev.map(j => j.id === recordId ? { ...j, status: status as Job['status'] } : j))
     if (selectedJob?.id === recordId) setSelectedJob(prev => prev ? { ...prev, status: status as Job['status'] } : null)
@@ -238,13 +245,15 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
     if (job) {
       logActivity({ type: 'status_change', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name, detail: status })
     }
-    try {
-      await fetch('/api/jobs', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId, status }),
-      })
-    } catch { /* optimistic stays */ }
+    const res = await fetch('/api/jobs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recordId, status }),
+    })
+    if (!res.ok) {
+      toast.error('Status update failed — please try again')
+      throw new Error('save_failed')
+    }
   }, [jobs, selectedJob])
 
   function onDragStart(e: DragStartEvent) {
@@ -255,7 +264,7 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
     setOverId(e.over?.id ?? null)
   }
 
-  function onDragEnd(e: DragEndEvent) {
+  async function onDragEnd(e: DragEndEvent) {
     const { active, over } = e
     setActiveJobId(null)
     setOverId(null)
@@ -267,7 +276,12 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
       : null
 
     if (job && targetStatus && targetStatus !== job.status) {
-      handleStatusChange(job.id, targetStatus)
+      setSavingId(job.id)
+      try {
+        await handleStatusChange(job.id, targetStatus)
+      } catch { /* error toast already shown in handleStatusChange */ } finally {
+        setSavingId(null)
+      }
     }
   }
 
@@ -291,6 +305,7 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
                 {...col}
                 jobs={columnJobs(col.status)}
                 isOver={overId === col.status}
+                savingId={savingId}
                 onSelect={setSelectedJob}
                 onStatusChange={handleStatusChange}
                 muted={col.muted}
