@@ -53,8 +53,16 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
 
   return (
     <div
+      role="article"
+      tabIndex={0}
       onClick={() => onSelect(job)}
-      className={`group relative bg-[#111118] hover:bg-[#161620] border border-[#1f1f2e] hover:border-[#2e2e42] rounded-xl p-5 cursor-pointer transition-all duration-200 ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect(job)
+        }
+      }}
+      className={`group relative bg-[#111118] hover:bg-[#161620] border border-[#1f1f2e] hover:border-[#2e2e42] rounded-xl p-5 cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 ${
         isElite ? 'border-l-2 border-l-emerald-500/40' : accent ? `border-l-2 ${accent}` : ''
       }`}
     >
@@ -85,12 +93,12 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
           )}
         </div>
 
-        {/* Hover quick actions */}
-        <div className="flex-shrink-0 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        {/* Quick actions — visible on hover or when any action button is focused */}
+        <div className="flex-shrink-0 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150">
           {job.job_apply_link && (
             <button
               onClick={handleApply}
-              className="flex items-center gap-1.5 text-[12px] bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
+              className="flex items-center gap-1.5 text-[12px] bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
               <ExternalLink className="w-3 h-3" />
               Apply
@@ -99,7 +107,7 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
           {job.cover_letter_url && (
             <button
               onClick={e => { e.stopPropagation(); onSelect(job) }}
-              className="flex items-center gap-1.5 text-[12px] bg-[#1e1e2e] hover:bg-[#252538] border border-[#2e2e44] text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap"
+              className="flex items-center gap-1.5 text-[12px] bg-[#1e1e2e] hover:bg-[#252538] border border-[#2e2e44] text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
             >
               <FileText className="w-3 h-3" />
               Cover Letter
@@ -108,7 +116,7 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
           {job.status !== 'Skipped' && (
             <button
               onClick={handleSkip}
-              className="flex items-center gap-1.5 text-[12px] bg-[#1e1e2e] hover:bg-red-500/10 border border-[#2e2e44] hover:border-red-500/20 text-zinc-600 hover:text-red-400 px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap"
+              className="flex items-center gap-1.5 text-[12px] bg-[#1e1e2e] hover:bg-red-500/10 border border-[#2e2e44] hover:border-red-500/20 text-zinc-600 hover:text-red-400 px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
             >
               <X className="w-3 h-3" />
               Skip

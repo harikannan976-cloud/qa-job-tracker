@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ExternalLink, Copy, Check, FileText, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import { logActivity, getActivity, activityLabel, timeAgo, ActivityEntry } from '@/lib/activity'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 import CoverLetterModal from './CoverLetterModal'
 
 // ─── Typewriter ──────────────────────────────────────────────────────────────
@@ -63,6 +64,9 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
   const [copiedCL,        setCopiedCL]        = useState(false)
   const [showTimeline,    setShowTimeline]    = useState(false)
   const [jobActivity,     setJobActivity]    = useState<ActivityEntry[]>([])
+
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(panelRef)
 
   const location  = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ')
   const matches   = job.ai_resume_matches ? job.ai_resume_matches.split(',').map(s => s.trim()).filter(Boolean) : []
@@ -127,18 +131,25 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
       <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] z-40" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-[480px] bg-[#0e0e18] border-l border-[#1a1a26] z-50 flex flex-col">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="panel-title"
+        className="fixed right-0 top-0 h-full w-full max-w-[480px] bg-[#0e0e18] border-l border-[#1a1a26] z-50 flex flex-col"
+      >
 
         {/* Sticky header */}
         <div className="flex-shrink-0 bg-[#0e0e18]/95 backdrop-blur-sm border-b border-[#1a1a26] px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h2 className="text-[15px] font-semibold text-white leading-snug">{job.job_title}</h2>
+              <h2 id="panel-title" className="text-[15px] font-semibold text-white leading-snug">{job.job_title}</h2>
               <p className="text-[13px] text-zinc-500 mt-0.5">{job.employer_name}</p>
             </div>
             <button
               onClick={onClose}
-              className="flex-shrink-0 text-zinc-600 hover:text-zinc-300 hover:bg-[#1e1e2e] p-1.5 rounded-lg transition-all mt-0.5"
+              aria-label="Close job detail panel"
+              className="flex-shrink-0 text-zinc-600 hover:text-zinc-300 hover:bg-[#1e1e2e] p-1.5 rounded-lg transition-all mt-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
             >
               <X className="w-4 h-4" />
             </button>
@@ -320,6 +331,7 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
           jobTitle={job.job_title}
           employer={job.employer_name}
           coverLetterUrl={job.cover_letter_url}
+          coverLetterText={job.cover_letter_text || undefined}
           onClose={() => setShowCoverLetter(false)}
           onCopied={() => logActivity({ type: 'cover_letter_copied', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })}
         />

@@ -19,6 +19,7 @@ export interface Job {
   ai_should_apply: boolean
   ai_red_flags: string
   cover_letter_url: string
+  cover_letter_text: string
   status: 'New' | 'Applied' | 'Interviewing' | 'Rejected' | 'Offer' | 'Skipped'
 }
 
@@ -66,6 +67,7 @@ export async function fetchJobs(): Promise<Job[]> {
         ai_should_apply: f.ai_should_apply ?? false,
         ai_red_flags: f.ai_red_flags ?? '',
         cover_letter_url: f.cover_letter_url ?? '',
+        cover_letter_text: f.cover_letter_text ?? '',
         status: f.status ?? 'New',
       })
     }

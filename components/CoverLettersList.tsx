@@ -128,6 +128,7 @@ export default function CoverLettersList({ jobs }: { jobs: Job[] }) {
           jobTitle={selectedJob.job_title}
           employer={selectedJob.employer_name}
           coverLetterUrl={selectedJob.cover_letter_url}
+          coverLetterText={selectedJob.cover_letter_text || undefined}
           onClose={() => setSelectedJob(null)}
           onCopied={() => logActivity({ type: 'cover_letter_copied', jobId: selectedJob.id, jobTitle: selectedJob.job_title, employer: selectedJob.employer_name })}
         />

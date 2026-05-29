@@ -1,25 +1,36 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Copy, Download, X, Edit2, Check, ExternalLink, Loader2 } from 'lucide-react'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 interface Props {
-  jobTitle:        string
-  employer:        string
-  coverLetterUrl:  string
-  onClose:         () => void
-  onCopied?:       () => void
+  jobTitle:         string
+  employer:         string
+  coverLetterUrl:   string
+  coverLetterText?: string
+  onClose:          () => void
+  onCopied?:        () => void
 }
 
-export default function CoverLetterModal({ jobTitle, employer, coverLetterUrl, onClose, onCopied }: Props) {
+export default function CoverLetterModal({ jobTitle, employer, coverLetterUrl, coverLetterText, onClose, onCopied }: Props) {
   const [text,    setText]    = useState('')
   const [edited,  setEdited]  = useState('')
   const [editing, setEditing] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!coverLetterText)
   const [error,   setError]   = useState<string | null>(null)
   const [copied,  setCopied]  = useState(false)
 
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef)
+
   useEffect(() => {
+    if (coverLetterText) {
+      setText(coverLetterText)
+      setEdited(coverLetterText)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     fetch(`/api/cover-letter?url=${encodeURIComponent(coverLetterUrl)}`)
@@ -34,7 +45,7 @@ export default function CoverLetterModal({ jobTitle, employer, coverLetterUrl, o
       })
       .catch(() => setError('fetch_failed'))
       .finally(() => setLoading(false))
-  }, [coverLetterUrl])
+  }, [coverLetterUrl, coverLetterText])
 
   const displayText = editing ? edited : text
 
@@ -55,27 +66,30 @@ export default function CoverLetterModal({ jobTitle, employer, coverLetterUrl, o
     URL.revokeObjectURL(a.href)
   }
 
-  // Close on backdrop or Escape
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  // Escape is handled via onKeyDown on the dialog div (stopPropagation prevents
+  // the panel behind this modal from also closing on the same keystroke)
 
   return (
     <>
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60]" onClick={onClose} />
 
-      <div className="fixed inset-x-4 top-[5vh] bottom-[5vh] max-w-2xl mx-auto bg-[#0e0e18] border border-[#1a1a26] rounded-2xl z-[70] flex flex-col shadow-2xl animate-fade-in">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cl-modal-title"
+        onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}
+        className="fixed inset-x-4 top-[5vh] bottom-[5vh] max-w-2xl mx-auto bg-[#0e0e18] border border-[#1a1a26] rounded-2xl z-[70] flex flex-col shadow-2xl animate-fade-in"
+      >
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-start justify-between px-6 py-4 border-b border-[#1a1a26]">
           <div>
             <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-medium mb-0.5">Cover Letter</p>
-            <h2 className="text-[14px] font-semibold text-white leading-snug">{jobTitle}</h2>
+            <h2 id="cl-modal-title" className="text-[14px] font-semibold text-white leading-snug">{jobTitle}</h2>
             <p className="text-[12px] text-zinc-500 mt-0.5">{employer}</p>
           </div>
-          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 hover:bg-[#1e1e2e] p-1.5 rounded-lg transition-all mt-0.5">
+          <button onClick={onClose} aria-label="Close cover letter" className="text-zinc-600 hover:text-zinc-300 hover:bg-[#1e1e2e] p-1.5 rounded-lg transition-all mt-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40">
             <X className="w-4 h-4" />
           </button>
         </div>

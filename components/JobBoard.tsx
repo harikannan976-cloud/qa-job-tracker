@@ -93,8 +93,26 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
         />
       )}
 
-      {/* Empty state */}
-      {filtered.length === 0 ? (
+      {/* Empty states */}
+      {jobs.length === 0 ? (
+        /* System-level: no jobs in Airtable at all */
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-[#111118] border border-[#1f1f2e] flex items-center justify-center mb-4">
+            <span className="text-2xl">🤖</span>
+          </div>
+          <p className="text-[14px] font-medium text-zinc-400 mb-1">No jobs yet</p>
+          <p className="text-[13px] text-zinc-600 max-w-sm leading-relaxed mb-4">
+            Run the automation workflow to fetch and score jobs from JSearch and Adzuna.
+          </p>
+          <a
+            href="/automation"
+            className="px-4 py-2 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 text-[13px] rounded-xl hover:bg-indigo-600/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+          >
+            Go to Automation →
+          </a>
+        </div>
+      ) : filtered.length === 0 ? (
+        /* Filter-level: jobs exist but current filters match nothing */
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-12 h-12 rounded-2xl bg-[#111118] border border-[#1f1f2e] flex items-center justify-center mb-4">
             <span className="text-2xl">🔍</span>
@@ -104,7 +122,7 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
           {activeCount > 0 && (
             <button
               onClick={clearAll}
-              className="px-4 py-2 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 text-[13px] rounded-xl hover:bg-indigo-600/20 transition-colors"
+              className="px-4 py-2 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 text-[13px] rounded-xl hover:bg-indigo-600/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
             >
               Clear all filters
             </button>

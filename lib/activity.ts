@@ -35,12 +35,12 @@ export function logActivity(entry: Omit<ActivityEntry, 'id' | 'ts'>): ActivityEn
 }
 
 const LABELS: Record<ActivityType, (e: ActivityEntry) => string> = {
-  applied:             e => `Applied to ${e.employer}`,
-  status_change:       e => `Moved ${e.employer} → ${e.detail}`,
-  cover_letter_viewed: e => `Viewed cover letter for ${e.employer}`,
-  cover_letter_copied: e => `Copied cover letter for ${e.employer}`,
-  posting_opened:      e => `Opened posting: ${e.jobTitle}`,
-  skipped:             e => `Skipped ${e.jobTitle} at ${e.employer}`,
+  applied:             e => `Applied · ${e.employer}`,
+  status_change:       e => `${e.detail ?? 'Status'} · ${e.employer}`,
+  cover_letter_viewed: e => `Viewed CL · ${e.employer}`,
+  cover_letter_copied: e => `Copied CL · ${e.employer}`,
+  posting_opened:      e => `Opened · ${e.jobTitle}`,
+  skipped:             e => `Skipped · ${e.employer}`,
 }
 
 export function activityLabel(e: ActivityEntry): string {

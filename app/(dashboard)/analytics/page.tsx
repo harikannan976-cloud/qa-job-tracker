@@ -1,8 +1,40 @@
+import { Suspense } from 'react'
 import { fetchJobs } from '@/lib/airtable'
 import { AnalyticsCharts } from '@/components/AnalyticsCharts'
+import { Skeleton } from '@/components/ui/Skeleton'
 import type { AnalyticsData } from '@/components/AnalyticsCharts'
 
-export default async function AnalyticsPage() {
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function AnalyticsSkeleton() {
+  return (
+    <div>
+      {/* KPI row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className="bg-[#111118] border border-[#1a1a26] rounded-xl p-4">
+            <Skeleton className="h-2.5 w-28 mb-3" />
+            <Skeleton className="h-8 w-14 mb-1" />
+            <Skeleton className="h-2.5 w-20" />
+          </div>
+        ))}
+      </div>
+      {/* Charts grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className="bg-[#111118] border border-[#1a1a26] rounded-xl p-5">
+            <Skeleton className="h-4 w-44 mb-5" />
+            <Skeleton className="h-[180px] w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Content ──────────────────────────────────────────────────────────────────
+
+async function AnalyticsContent() {
   const jobs = await fetchJobs()
 
   const applied     = jobs.filter(j => ['Applied', 'Interviewing', 'Offer'].includes(j.status)).length
@@ -33,15 +65,23 @@ export default async function AnalyticsPage() {
     }),
   }
 
+  return <AnalyticsCharts {...data} />
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function AnalyticsPage() {
   return (
-    <div className="px-6 py-8 max-w-5xl">
+    <div className="px-6 py-8 max-w-5xl animate-fade-in">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-white tracking-tight">Analytics</h1>
         <p className="text-[13px] text-zinc-500 mt-1">
           Score distribution, application funnel, and source performance · live Airtable data
         </p>
       </div>
-      <AnalyticsCharts {...data} />
+      <Suspense fallback={<AnalyticsSkeleton />}>
+        <AnalyticsContent />
+      </Suspense>
     </div>
   )
 }

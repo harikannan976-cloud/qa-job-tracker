@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   CheckCircle, AlertTriangle, Clock, Zap, Database,
   MessageSquare, Filter, GitMerge, FileText, Search, Play,
+  RefreshCw, Loader2,
 } from 'lucide-react'
 
 // ─── Demo data ───────────────────────────────────────────────────────────────
@@ -74,9 +76,60 @@ const N8N_DAILY = process.env.NEXT_PUBLIC_N8N_WEBHOOK_DAILY ?? 'http://localhost
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+const RUN_KEY = 'automation_active_run'
+
+type RunStatus = 'idle' | 'running' | 'done' | 'error'
+
 export default function AutomationPage() {
-  const [triggering, setTriggering] = useState(false)
-  const [mode,       setMode]       = useState<'test' | 'daily'>('test')
+  const router = useRouter()
+  const [triggering,  setTriggering]  = useState(false)
+  const [mode,        setMode]        = useState<'test' | 'daily'>('test')
+  const [runStatus,   setRunStatus]   = useState<RunStatus>('idle')
+  const [elapsed,     setElapsed]     = useState(0)
+  const [baseCount,   setBaseCount]   = useState<number | null>(null)
+  const [newJobs,     setNewJobs]     = useState(0)
+  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  function stopPolling() {
+    if (pollRef.current)    { clearInterval(pollRef.current);    pollRef.current    = null }
+    if (elapsedRef.current) { clearInterval(elapsedRef.current); elapsedRef.current = null }
+  }
+
+  function finishRun(status: 'done' | 'error') {
+    setRunStatus(status)
+    stopPolling()
+    sessionStorage.removeItem(RUN_KEY)
+  }
+
+  async function getJobs(): Promise<{ count: number; clCount: number }> {
+    try {
+      const res = await fetch('/api/jobs')
+      if (!res.ok) return { count: 0, clCount: 0 }
+      const data = await res.json()
+      if (!Array.isArray(data)) return { count: 0, clCount: 0 }
+      return {
+        count: data.length,
+        clCount: data.filter((j: { cover_letter_url?: string }) => j.cover_letter_url).length,
+      }
+    } catch { return { count: 0, clCount: 0 } }
+  }
+
+  function startPolling(initialCount: number, startTick = 0) {
+    let ticks = startTick
+    pollRef.current = setInterval(async () => {
+      ticks++
+      const { count, clCount } = await getJobs()
+      const added = count - initialCount
+      router.refresh()
+      if (added > 0) {
+        setNewJobs(added)
+        if (clCount > 0 || ticks >= 48) finishRun('done')
+      } else if (ticks >= 30) {
+        finishRun('done')
+      }
+    }, 10_000)
+  }
 
   async function handleTrigger() {
     setTriggering(true)
@@ -84,14 +137,72 @@ export default function AutomationPage() {
     try {
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       if (res.ok) {
-        toast.success(mode === 'test' ? 'Test run started — 8 sample jobs → scoring → Airtable' : 'Daily pipeline started — fetching live jobs now', { duration: 5000 })
+        toast.success(
+          mode === 'test'
+            ? 'Test run started — 8 sample jobs → scoring → Airtable'
+            : 'Daily pipeline started — fetching live jobs now',
+          { duration: 4000 }
+        )
+        const initial = await getJobs()
+        setBaseCount(initial.count)
+        setNewJobs(0)
+        setElapsed(0)
+        setRunStatus('running')
+        sessionStorage.setItem(RUN_KEY, JSON.stringify({ startedAt: Date.now(), initialCount: initial.count }))
+
+        elapsedRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
+        startPolling(initial.count)
       } else {
         toast.error(`n8n returned ${res.status} — check the workflow is active`, { duration: 4000 })
+        setRunStatus('error')
       }
     } catch {
       toast.error('Could not reach n8n at localhost:5678 — make sure it\'s running', { duration: 5000 })
+      setRunStatus('error')
     }
     setTimeout(() => setTriggering(false), 2000)
+  }
+
+  // Restore run state if user navigated away mid-run
+  useEffect(() => {
+    const saved = sessionStorage.getItem(RUN_KEY)
+    if (!saved) return
+    try {
+      const { startedAt, initialCount } = JSON.parse(saved) as { startedAt: number; initialCount: number }
+      const elapsedSec = Math.floor((Date.now() - startedAt) / 1000)
+      if (elapsedSec > 600) { sessionStorage.removeItem(RUN_KEY); return }
+
+      const resumeTick = Math.floor(elapsedSec / 10)
+      setBaseCount(initialCount)
+      setElapsed(elapsedSec)
+      setRunStatus('running')
+
+      elapsedRef.current = setInterval(() => setElapsed(s => s + 1), 1000)
+
+      // Immediately check current state, then resume polling
+      getJobs().then(({ count, clCount }) => {
+        const added = count - initialCount
+        router.refresh()
+        if (added > 0) {
+          setNewJobs(added)
+          if (clCount > 0 || resumeTick >= 48) { finishRun('done'); return }
+        } else if (resumeTick >= 30) {
+          finishRun('done'); return
+        }
+        startPolling(initialCount, resumeTick)
+      })
+    } catch {
+      sessionStorage.removeItem(RUN_KEY)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Cleanup intervals on unmount (preserve sessionStorage so state survives navigation)
+  useEffect(() => () => stopPolling(), [])
+
+  function formatElapsed(s: number) {
+    if (s < 60) return `${s}s`
+    return `${Math.floor(s / 60)}m ${s % 60}s`
   }
 
   return (
@@ -129,6 +240,61 @@ export default function AutomationPage() {
           </button>
         </div>
       </div>
+
+      {/* Run status banner */}
+      {runStatus === 'running' && (
+        <div className="flex items-center gap-3 bg-indigo-500/5 border border-indigo-500/20 rounded-xl px-4 py-3">
+          <Loader2 className="w-4 h-4 text-indigo-400 animate-spin flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] text-indigo-400 font-medium">Workflow running…</p>
+            <p className="text-[11px] text-zinc-600 mt-0.5">
+              Scoring jobs with Claude Haiku · elapsed {formatElapsed(elapsed)} · checking for new jobs every 10s
+            </p>
+          </div>
+          <span className="text-[12px] text-zinc-600 flex-shrink-0">{formatElapsed(elapsed)}</span>
+        </div>
+      )}
+
+      {runStatus === 'done' && (
+        <div className="flex items-center gap-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3">
+          <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] text-emerald-400 font-medium">
+              {newJobs > 0 ? `${newJobs} new job${newJobs !== 1 ? 's' : ''} added to dashboard` : 'Run complete'}
+            </p>
+            <p className="text-[11px] text-zinc-600 mt-0.5">
+              {newJobs > 0
+                ? 'Scored, saved to Airtable, and cover letters generated for high scorers'
+                : `Pipeline finished in ${formatElapsed(elapsed)} · no new jobs matched criteria`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {newJobs > 0 && (
+              <a
+                href="/jobs"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-[12px] font-medium rounded-lg transition-all"
+              >
+                <RefreshCw className="w-3 h-3" />
+                View Jobs
+              </a>
+            )}
+            <button
+              onClick={() => setRunStatus('idle')}
+              className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors px-2"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {runStatus === 'error' && (
+        <div className="flex items-center gap-3 bg-red-500/5 border border-red-500/20 rounded-xl px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <p className="text-[13px] text-red-400 flex-1">Could not reach n8n — make sure the container is running</p>
+          <button onClick={() => setRunStatus('idle')} className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors px-2">Dismiss</button>
+        </div>
+      )}
 
       {/* Status cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

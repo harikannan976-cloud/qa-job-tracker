@@ -186,8 +186,11 @@ function KanbanColumn({
         }`}
       >
         {jobs.length === 0 && !isOver && (
-          <div className="flex items-center justify-center h-24">
-            <p className="text-[11px] text-zinc-800">Drop here</p>
+          <div className="flex flex-col items-center justify-center h-28 gap-2">
+            <div className="w-7 h-7 rounded-lg border border-dashed border-[#2a2a3e] flex items-center justify-center">
+              <div className="w-2.5 h-2.5 rounded-full border border-dashed border-[#3a3a4e]" />
+            </div>
+            <p className="text-[10px] text-zinc-700 font-medium">Empty</p>
           </div>
         )}
         {jobs.map(job => (
