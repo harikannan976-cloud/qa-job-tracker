@@ -10,25 +10,26 @@ import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
 import { logActivity } from '@/lib/activity'
-import { ExternalLink, X } from 'lucide-react'
+import { ExternalLink, X, RotateCcw } from 'lucide-react'
 import JobDetailPanel from './JobDetailPanel'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const COLUMNS: { status: Job['status']; label: string; color: string; dot: string }[] = [
+const COLUMNS: { status: Job['status']; label: string; color: string; dot: string; muted?: boolean }[] = [
   { status: 'New',          label: 'New',          color: 'text-indigo-400',  dot: 'bg-indigo-400' },
   { status: 'Applied',      label: 'Applied',      color: 'text-amber-400',   dot: 'bg-amber-400'  },
   { status: 'Interviewing', label: 'Interviewing', color: 'text-orange-400',  dot: 'bg-orange-400' },
   { status: 'Offer',        label: 'Offer',        color: 'text-emerald-400', dot: 'bg-emerald-400'},
   { status: 'Rejected',     label: 'Rejected',     color: 'text-red-400',     dot: 'bg-red-400'    },
+  { status: 'Skipped',      label: 'Skipped',      color: 'text-zinc-500',    dot: 'bg-zinc-600', muted: true },
 ]
 
 const COLUMN_STATUSES = COLUMNS.map(c => c.status)
 
 const STATUS_TOAST: Record<string, string> = {
-  New: 'Moved back to New', Applied: 'Marked as Applied',
+  New: 'Restored to New', Applied: 'Marked as Applied',
   Interviewing: 'Moved to Interviewing', Offer: '🎉 Marked as Offer!',
-  Rejected: 'Marked as Rejected',
+  Rejected: 'Marked as Rejected', Skipped: 'Job skipped',
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ function scoreMeta(score: number) {
 
 // ─── Card content (shared between draggable and overlay) ─────────────────────
 
-function CardContent({ job, dim = false }: { job: Job; dim?: boolean }) {
+function CardContent({ job, dim = false, skipped = false }: { job: Job; dim?: boolean; skipped?: boolean }) {
   const location = job.job_is_remote
     ? 'Remote'
     : [job.job_city, job.job_state].filter(Boolean).join(', ')
@@ -71,8 +72,10 @@ function CardContent({ job, dim = false }: { job: Job; dim?: boolean }) {
 
   return (
     <div
-      className={`bg-[#111118] border ${border} rounded-xl p-3.5 transition-all duration-200 select-none ${dim ? 'opacity-25' : 'hover:bg-[#161620] hover:border-[#2a2a3e]'}`}
-      style={{ boxShadow: dim ? 'none' : glow }}
+      className={`bg-[#111118] border ${border} rounded-xl p-3.5 transition-all duration-200 select-none ${
+        dim ? 'opacity-25' : skipped ? 'opacity-50 hover:opacity-70' : 'hover:bg-[#161620] hover:border-[#2a2a3e]'
+      }`}
+      style={{ boxShadow: dim || skipped ? 'none' : glow }}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
@@ -119,37 +122,51 @@ function KanbanCard({ job, onSelect, onStatusChange }: {
         className="cursor-grab active:cursor-grabbing relative"
         onClick={e => { e.stopPropagation(); if (!isDragging) onSelect(job) }}
       >
-        <CardContent job={job} dim={isDragging} />
+        <CardContent job={job} dim={isDragging} skipped={job.status === 'Skipped'} />
         {/* Quick action bar — appears on hover, doesn't interfere with drag */}
         {!isDragging && (
           <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
-            {job.job_apply_link && job.status !== 'Applied' && (
+            {job.status === 'Skipped' ? (
               <button
                 onPointerDown={e => e.stopPropagation()}
                 onClick={e => {
                   e.stopPropagation()
-                  window.open(job.job_apply_link, '_blank', 'noopener,noreferrer')
-                  logActivity({ type: 'posting_opened', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-                  onStatusChange(job.id, 'Applied')
+                  onStatusChange(job.id, 'New')
                 }}
-                className="flex items-center gap-1 px-2 py-1 bg-indigo-600/90 hover:bg-indigo-500 text-white text-[11px] font-medium rounded-md transition-colors"
+                className="flex items-center gap-1 px-2 py-1 bg-[#1a1a26]/90 hover:bg-indigo-500/20 border border-[#2e2e42] hover:border-indigo-500/30 text-zinc-500 hover:text-indigo-400 text-[11px] font-medium rounded-md transition-all"
               >
-                <ExternalLink className="w-2.5 h-2.5" />
-                Apply
+                <RotateCcw className="w-2.5 h-2.5" />
+                Restore
               </button>
-            )}
-            {job.status !== 'Skipped' && (
-              <button
-                onPointerDown={e => e.stopPropagation()}
-                onClick={e => {
-                  e.stopPropagation()
-                  logActivity({ type: 'skipped', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-                  onStatusChange(job.id, 'Skipped')
-                }}
-                className="flex items-center gap-1 px-2 py-1 bg-[#1a1a26]/90 hover:bg-red-500/20 border border-[#2e2e42] hover:border-red-500/30 text-zinc-500 hover:text-red-400 text-[11px] font-medium rounded-md transition-all"
-              >
-                <X className="w-2.5 h-2.5" />
-              </button>
+            ) : (
+              <>
+                {job.job_apply_link && job.status !== 'Applied' && (
+                  <button
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={e => {
+                      e.stopPropagation()
+                      window.open(job.job_apply_link, '_blank', 'noopener,noreferrer')
+                      logActivity({ type: 'posting_opened', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
+                      onStatusChange(job.id, 'Applied')
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 bg-indigo-600/90 hover:bg-indigo-500 text-white text-[11px] font-medium rounded-md transition-colors"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    Apply
+                  </button>
+                )}
+                <button
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => {
+                    e.stopPropagation()
+                    logActivity({ type: 'skipped', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
+                    onStatusChange(job.id, 'Skipped')
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 bg-[#1a1a26]/90 hover:bg-red-500/20 border border-[#2e2e42] hover:border-red-500/30 text-zinc-500 hover:text-red-400 text-[11px] font-medium rounded-md transition-all"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </>
             )}
           </div>
         )}
@@ -161,9 +178,9 @@ function KanbanCard({ job, onSelect, onStatusChange }: {
 // ─── Droppable column ─────────────────────────────────────────────────────────
 
 function KanbanColumn({
-  status, label, color, dot, jobs, isOver, onSelect, onStatusChange,
+  status, label, color, dot, muted, jobs, isOver, onSelect, onStatusChange,
 }: {
-  status: string; label: string; color: string; dot: string
+  status: string; label: string; color: string; dot: string; muted?: boolean
   jobs: Job[]; isOver: boolean
   onSelect: (j: Job) => void
   onStatusChange: (id: string, status: string) => void
@@ -182,7 +199,9 @@ function KanbanColumn({
       <div
         ref={setNodeRef}
         className={`flex-1 rounded-xl min-h-[200px] p-2 space-y-2 transition-all duration-150 ${
-          isOver ? 'bg-indigo-500/5 ring-1 ring-indigo-500/20' : 'bg-[#0d0d14]'
+          isOver
+            ? muted ? 'bg-zinc-500/5 ring-1 ring-zinc-500/20' : 'bg-indigo-500/5 ring-1 ring-indigo-500/20'
+            : 'bg-[#0d0d14]'
         }`}
       >
         {jobs.length === 0 && !isOver && (
@@ -253,10 +272,8 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
   }
 
   const columnJobs = (status: string) =>
-    jobs.filter(j => j.status === status && status !== 'Skipped')
+    jobs.filter(j => j.status === status)
       .sort((a, b) => b.ai_score - a.ai_score)
-
-  const skippedCount = jobs.filter(j => j.status === 'Skipped').length
 
   return (
     <>
@@ -276,6 +293,7 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
                 isOver={overId === col.status}
                 onSelect={setSelectedJob}
                 onStatusChange={handleStatusChange}
+                muted={col.muted}
               />
             ))}
           </div>
@@ -289,12 +307,6 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
           )}
         </DragOverlay>
       </DndContext>
-
-      {skippedCount > 0 && (
-        <p className="text-[11px] text-zinc-700 mt-2">
-          {skippedCount} skipped {skippedCount === 1 ? 'job' : 'jobs'} hidden from board
-        </p>
-      )}
 
       {selectedJob && (
         <JobDetailPanel

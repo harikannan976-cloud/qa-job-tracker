@@ -9,7 +9,7 @@ function PipelineSkeleton() {
   return (
     <div className="overflow-x-auto pb-6">
       <div className="flex gap-4 min-w-max">
-        {[0, 1, 2, 3, 4].map(col => (
+        {[0, 1, 2, 3, 4, 5].map(col => (
           <div key={col} className="flex-shrink-0 w-[240px] flex flex-col">
             {/* Column header */}
             <div className="flex items-center gap-2 mb-3 px-1">
