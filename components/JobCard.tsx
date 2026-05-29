@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ExternalLink, FileText, X, Loader2 } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import { logActivity } from '@/lib/activity'
+import { loadPreferences } from '@/lib/preferences'
 
 interface Props {
   job:            Job
@@ -34,12 +35,36 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
   const [savingApply, setSavingApply] = useState(false)
   const [savingSkip,  setSavingSkip]  = useState(false)
 
+  const prefs = loadPreferences()
+
   const location   = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ')
   const postedDate = job.job_posted_at
     ? new Date(job.job_posted_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
     : ''
   const { badge, accent } = scoreStyle(job.ai_score)
   const isElite = job.ai_score >= 9
+
+  // Preference indicators
+  const locationText   = [job.job_city, job.job_state, job.job_country].join(' ').toLowerCase()
+  const resumeText     = job.ai_resume_matches.toLowerCase()
+  const fullText       = `${job.job_title} ${job.ai_reasoning}`.toLowerCase()
+
+  const locationMatch  = prefs.preferredLocations.length > 0 &&
+    prefs.preferredLocations.some(loc =>
+      loc.toLowerCase() === 'remote' ? job.job_is_remote : locationText.includes(loc.toLowerCase())
+    )
+
+  const matchedSkills  = prefs.preferredSkills.length > 0
+    ? prefs.preferredSkills.filter(s => resumeText.includes(s.toLowerCase()))
+    : []
+
+  const belowThreshold = prefs.minScoreThreshold > 0 && job.ai_score < prefs.minScoreThreshold
+
+  const excludedFound  = prefs.excludedKeywords.length > 0
+    ? prefs.excludedKeywords.filter(kw => fullText.includes(kw.toLowerCase()))
+    : []
+
+  const hasIndicators = locationMatch || matchedSkills.length > 0 || belowThreshold || excludedFound.length > 0
 
   async function handleApply(e: React.MouseEvent) {
     e.stopPropagation()
@@ -99,6 +124,30 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
           </div>
           {job.ai_reasoning && (
             <p className="mt-2 text-[12px] text-zinc-500 line-clamp-2 leading-relaxed">{job.ai_reasoning}</p>
+          )}
+          {hasIndicators && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {locationMatch && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/[0.07] text-emerald-600/80 border border-emerald-500/15">
+                  📍 Location match
+                </span>
+              )}
+              {matchedSkills.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/[0.07] text-indigo-500/60 border border-indigo-500/15">
+                  ★ {matchedSkills[0]}{matchedSkills.length > 1 ? ` +${matchedSkills.length - 1}` : ''}
+                </span>
+              )}
+              {belowThreshold && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/[0.07] text-amber-600/60 border border-amber-500/15">
+                  ↓ Below threshold
+                </span>
+              )}
+              {excludedFound.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/[0.07] text-red-500/60 border border-red-500/15">
+                  ⚠ {excludedFound[0]}
+                </span>
+              )}
+            </div>
           )}
         </div>
 

@@ -7,6 +7,7 @@ import { Job } from '@/lib/airtable'
 import { logActivity, getActivity, activityLabel, timeAgo, ActivityEntry } from '@/lib/activity'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import CoverLetterModal from './CoverLetterModal'
+import { loadPreferences } from '@/lib/preferences'
 
 // ─── Typewriter ──────────────────────────────────────────────────────────────
 
@@ -61,14 +62,27 @@ interface Props {
 }
 
 export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) {
-  const [showCoverLetter, setShowCoverLetter] = useState(false)
-  const [copiedCL,        setCopiedCL]        = useState(false)
-  const [showTimeline,    setShowTimeline]    = useState(false)
-  const [jobActivity,     setJobActivity]     = useState<ActivityEntry[]>([])
-  const [isSaving,        setIsSaving]        = useState(false)
+  const [showCoverLetter,     setShowCoverLetter]     = useState(false)
+  const [copiedCL,            setCopiedCL]            = useState(false)
+  const [showTimeline,        setShowTimeline]        = useState(false)
+  const [jobActivity,         setJobActivity]         = useState<ActivityEntry[]>([])
+  const [isSaving,            setIsSaving]            = useState(false)
+  const [isTrackingSaving,    setIsTrackingSaving]    = useState(false)
+  const [trackingNotes,       setTrackingNotes]       = useState(job.notes ?? '')
+  const [trackingAppliedDate, setTrackingAppliedDate] = useState(job.applied_date ?? '')
+  const [trackingFollowUpDate,setTrackingFollowUpDate]= useState(job.follow_up_date ?? '')
+  const [trackingRecruiter,   setTrackingRecruiter]   = useState(job.recruiter_contact ?? '')
 
   const panelRef = useRef<HTMLDivElement>(null)
   useFocusTrap(panelRef)
+
+  // Reset form when switching to a different job
+  useEffect(() => {
+    setTrackingNotes(job.notes ?? '')
+    setTrackingAppliedDate(job.applied_date ?? '')
+    setTrackingFollowUpDate(job.follow_up_date ?? '')
+    setTrackingRecruiter(job.recruiter_contact ?? '')
+  }, [job.id])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const location  = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ')
   const matches   = job.ai_resume_matches ? job.ai_resume_matches.split(',').map(s => s.trim()).filter(Boolean) : []
@@ -99,10 +113,45 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
     setIsSaving(true)
     try {
       await onStatusChange(job.id, status)
+      if (status === 'Applied' && !trackingAppliedDate) {
+        setTrackingAppliedDate(new Date().toISOString().split('T')[0])
+      }
+      if (status === 'Applied' && !trackingFollowUpDate) {
+        const prefs = loadPreferences()
+        if (prefs.followUpReminderDays > 0) {
+          const d = new Date()
+          d.setDate(d.getDate() + prefs.followUpReminderDays)
+          setTrackingFollowUpDate(d.toISOString().split('T')[0])
+        }
+      }
     } catch {
       toast.error('Could not save — please try again')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  async function handleSaveTracking() {
+    if (isTrackingSaving) return
+    setIsTrackingSaving(true)
+    try {
+      const res = await fetch('/api/jobs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordId:          job.id,
+          notes:             trackingNotes,
+          applied_date:      trackingAppliedDate || '',
+          follow_up_date:    trackingFollowUpDate || '',
+          recruiter_contact: trackingRecruiter,
+        }),
+      })
+      if (!res.ok) throw new Error('save_failed')
+      toast.success('Tracking details saved')
+    } catch {
+      toast.error('Could not save — please try again')
+    } finally {
+      setIsTrackingSaving(false)
     }
   }
 
@@ -295,6 +344,65 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
                 <span className="text-[12px] text-zinc-700">No cover letter generated yet</span>
               </div>
             )}
+          </section>
+
+          {/* Tracking Details */}
+          <section>
+            <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-3">Tracking Details</h3>
+            <div className="space-y-3">
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-zinc-600 mb-1.5 block">Applied Date</label>
+                  <input
+                    type="date"
+                    value={trackingAppliedDate}
+                    onChange={e => setTrackingAppliedDate(e.target.value)}
+                    className="w-full bg-[#0d0d14] border border-[#1f1f2e] rounded-lg px-3 py-2 text-[12px] text-zinc-300 focus:outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20 [color-scheme:dark]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-zinc-600 mb-1.5 block">Follow-up Date</label>
+                  <input
+                    type="date"
+                    value={trackingFollowUpDate}
+                    onChange={e => setTrackingFollowUpDate(e.target.value)}
+                    className="w-full bg-[#0d0d14] border border-[#1f1f2e] rounded-lg px-3 py-2 text-[12px] text-zinc-300 focus:outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20 [color-scheme:dark]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-zinc-600 mb-1.5 block">Recruiter / Contact</label>
+                <input
+                  type="text"
+                  value={trackingRecruiter}
+                  onChange={e => setTrackingRecruiter(e.target.value)}
+                  placeholder="Name, email, or LinkedIn URL"
+                  className="w-full bg-[#0d0d14] border border-[#1f1f2e] rounded-lg px-3 py-2 text-[12px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] text-zinc-600 mb-1.5 block">Notes</label>
+                <textarea
+                  value={trackingNotes}
+                  onChange={e => setTrackingNotes(e.target.value)}
+                  placeholder="Interview notes, salary, follow-up reminders…"
+                  rows={4}
+                  className="w-full bg-[#0d0d14] border border-[#1f1f2e] rounded-lg px-3 py-2 text-[12px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20 resize-none leading-relaxed"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveTracking}
+                disabled={isTrackingSaving}
+                className="w-full flex items-center justify-center gap-2 bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] hover:border-[#3a3a4e] text-zinc-300 hover:text-zinc-100 py-2 rounded-xl text-[12px] font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30"
+              >
+                {isTrackingSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {isTrackingSaving ? 'Saving…' : 'Save Tracking Details'}
+              </button>
+            </div>
           </section>
 
           {/* AI Assessment */}

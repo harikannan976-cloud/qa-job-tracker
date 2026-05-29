@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { Job } from '@/lib/airtable'
+import { loadPreferences } from '@/lib/preferences'
 
 export interface Filters {
   statuses:       Job['status'][]
@@ -46,7 +47,10 @@ function matches(job: Job, q: string): boolean {
 
 export function useJobSearch(jobs: Job[]) {
   const [query,   setQuery]   = useState('')
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState<Filters>(() => {
+    const prefs = loadPreferences()
+    return { ...DEFAULT_FILTERS, scoreMin: prefs.minScoreThreshold }
+  })
 
   const filtered = useMemo(() => {
     const cutoff = rangeCutoff(filters.dateRange)

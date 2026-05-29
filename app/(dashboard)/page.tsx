@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { fetchJobs } from '@/lib/airtable'
 import ActivityFeed from '@/components/ActivityFeed'
 import DashboardActionItems from '@/components/DashboardActionItems'
+import DashboardPreferencePanel from '@/components/DashboardPreferencePanel'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { ArrowRight, GitBranch, FileText, BarChart2, Sparkles } from 'lucide-react'
 
@@ -49,6 +50,9 @@ async function DashboardContent() {
           </Link>
         ))}
       </div>
+
+      {/* Preference snapshot */}
+      <DashboardPreferencePanel jobs={jobs} />
 
       {/* Body */}
       <div className="flex gap-6">

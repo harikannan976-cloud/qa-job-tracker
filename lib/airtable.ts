@@ -21,6 +21,10 @@ export interface Job {
   cover_letter_url: string
   cover_letter_text: string
   status: 'New' | 'Applied' | 'Interviewing' | 'Rejected' | 'Offer' | 'Skipped'
+  notes: string
+  applied_date: string
+  follow_up_date: string
+  recruiter_contact: string
 }
 
 const BASE_URL = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${process.env.AIRTABLE_TABLE_NAME}`
@@ -66,9 +70,13 @@ export async function fetchJobs(): Promise<Job[]> {
         ai_gaps: f.ai_gaps ?? '',
         ai_should_apply: f.ai_should_apply ?? false,
         ai_red_flags: f.ai_red_flags ?? '',
-        cover_letter_url: f.cover_letter_url ?? '',
-        cover_letter_text: f.cover_letter_text ?? '',
-        status: f.status ?? 'New',
+        cover_letter_url:   f.cover_letter_url ?? '',
+        cover_letter_text:  f.cover_letter_text ?? '',
+        status:             f.status ?? 'New',
+        notes:              f.notes ?? '',
+        applied_date:       f.applied_date ?? '',
+        follow_up_date:     f.follow_up_date ?? '',
+        recruiter_contact:  f.recruiter_contact ?? '',
       })
     }
 
@@ -83,5 +91,20 @@ export async function updateJobStatus(recordId: string, status: string): Promise
     method: 'PATCH',
     headers,
     body: JSON.stringify({ fields: { status } }),
+  })
+}
+
+export async function getJobField(recordId: string, fieldName: string): Promise<unknown> {
+  const url = `${BASE_URL}/${recordId}?fields[]=${encodeURIComponent(fieldName)}`
+  const res  = await fetch(url, { headers, cache: 'no-store' })
+  const data = await res.json()
+  return data.fields?.[fieldName] ?? null
+}
+
+export async function updateJobFields(recordId: string, fields: Record<string, unknown>): Promise<void> {
+  await fetch(`${BASE_URL}/${recordId}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ fields }),
   })
 }
