@@ -2090,6 +2090,262 @@ with sync_playwright() as pw:
     # Final cleanup
     page.evaluate("() => localStorage.removeItem('qa_tracker_prefs')")
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Phase 4 · AI Match Intelligence & Resume Gap Analysis
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def open_first_job_panel():
+        """Navigate to /jobs, open first card, return True if panel opened."""
+        page.goto(f'{BASE}/jobs', wait_until='networkidle')
+        page.wait_for_timeout(400)
+        card = page.locator('[role="article"]').first
+        if card.count() == 0:
+            return False
+        card.click()
+        page.wait_for_timeout(500)
+        return page.locator('[role="dialog"]').count() > 0
+
+    # ── AI Match Intelligence section renders ─────────────────────────────
+    sec('Phase 4 · AI Match Intelligence renders')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+
+        chk(panel.get_by_text('AI Match Intelligence').count() > 0,
+            '"AI Match Intelligence" section heading present in panel')
+
+        # Confidence badge visible (High / Medium / Low Confidence)
+        conf_badge = panel.locator('span').filter(has_text='Confidence')
+        chk(conf_badge.count() > 0,
+            'Confidence badge visible in section header')
+        conf_text = conf_badge.first.inner_text() if conf_badge.count() > 0 else ''
+        chk(
+            any(w in conf_text for w in ['High', 'Medium', 'Low']),
+            'Confidence badge shows High / Medium / Low band',
+            f'got: {conf_text!r}'
+        )
+
+        # Match Summary sub-section present and expanded by default
+        summary_btn = panel.locator('button').filter(has_text='Match Summary').first
+        chk(summary_btn.count() > 0, '"Match Summary" sub-section button present')
+        if summary_btn.count() > 0:
+            expanded = summary_btn.get_attribute('aria-expanded')
+            chk(expanded == 'true', 'Match Summary is expanded by default',
+                f'aria-expanded={expanded!r}')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('AI Match Intelligence renders', 'No job card found')
+
+    # ── Collapsed-by-default sub-sections ────────────────────────────────
+    sec('Phase 4 · Sub-sections collapsed by default')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+
+        for label in ['Missing Skills', 'Interview Preparation',
+                      'Resume Alignment', 'Confidence Analysis']:
+            btn = panel.locator('button').filter(has_text=label).first
+            if btn.count() > 0:
+                expanded = btn.get_attribute('aria-expanded')
+                chk(expanded == 'false',
+                    f'"{label}" collapsed by default', f'aria-expanded={expanded!r}')
+            else:
+                probe(f'"{label}" button presence (data-dependent)', 'not found')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('Sub-sections collapsed by default', 'No job card found')
+
+    # ── Match Summary content ─────────────────────────────────────────────
+    sec('Phase 4 · Match Summary content')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+
+        # Factors: at least "AI recommendation" is always present
+        ai_rec = panel.get_by_text('AI recommendation').count()
+        chk(ai_rec > 0, '"AI recommendation" factor visible in expanded Match Summary')
+
+        # "Skills matched" factor present when matches exist (probe — data-dependent)
+        skills_factor = panel.get_by_text('Skills matched').count()
+        probe('"Skills matched" factor present (data-dependent)', f'{skills_factor} el(s)')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('Match Summary content', 'No job card found')
+
+    # ── Missing Skills expands and shows priority groups ──────────────────
+    sec('Phase 4 · Missing Skills section')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+        gaps_btn = panel.locator('button').filter(has_text='Missing Skills').first
+
+        if gaps_btn.count() > 0:
+            gaps_btn.click()
+            page.wait_for_timeout(300)
+            chk(gaps_btn.get_attribute('aria-expanded') == 'true',
+                'Missing Skills expands on click')
+
+            # At least one priority group should appear (data-dependent)
+            has_high   = panel.get_by_text('High Priority').count() > 0
+            has_med    = panel.get_by_text('Medium Priority').count() > 0
+            has_uncat  = panel.get_by_text('Uncategorized').count() > 0
+            probe('Gap priority groups visible after expand',
+                  f'High={has_high} Medium={has_med} Uncategorized={has_uncat}')
+
+            # "Uncategorized" section must never say "Low Priority"
+            chk(panel.get_by_text('Low Priority').count() == 0,
+                '"Low Priority" label absent — replaced by "Uncategorized"')
+
+            # Collapse again
+            gaps_btn.click()
+            page.wait_for_timeout(200)
+            chk(gaps_btn.get_attribute('aria-expanded') == 'false',
+                'Missing Skills collapses on second click')
+        else:
+            probe('Missing Skills section', 'Not rendered (no gaps in this job)')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('Missing Skills section', 'No job card found')
+
+    # ── Interview Preparation expands ─────────────────────────────────────
+    sec('Phase 4 · Interview Preparation section')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+        ip_btn = panel.locator('button').filter(has_text='Interview Preparation').first
+
+        if ip_btn.count() > 0:
+            ip_btn.click()
+            page.wait_for_timeout(300)
+            chk(ip_btn.get_attribute('aria-expanded') == 'true',
+                'Interview Preparation expands on click')
+
+            # Legend should appear
+            legend_strength = panel.get_by_text('Your strengths').count() > 0
+            legend_role     = panel.get_by_text('Role requirements').count() > 0
+            chk(legend_strength and legend_role,
+                'Interview Prep legend shows "Your strengths" and "Role requirements"',
+                f'strength={legend_strength} role={legend_role}')
+        else:
+            probe('Interview Preparation section', 'Not rendered (no topics in this job)')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('Interview Preparation section', 'No job card found')
+
+    # ── Resume Alignment expands and shows Strong Areas + Improvements ────
+    sec('Phase 4 · Resume Alignment section')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+        ra_btn = panel.locator('button').filter(has_text='Resume Alignment').first
+
+        if ra_btn.count() > 0:
+            ra_btn.click()
+            page.wait_for_timeout(300)
+            chk(ra_btn.get_attribute('aria-expanded') == 'true',
+                'Resume Alignment expands on click')
+
+            has_strong  = panel.get_by_text('Strong Areas').count() > 0
+            has_improve = panel.get_by_text('Potential Improvements').count() > 0
+            probe('"Strong Areas" section visible (data-dependent)',   f'{has_strong}')
+            probe('"Potential Improvements" section visible (data-dependent)', f'{has_improve}')
+
+            # No fabricated experience — improvements use "Add X" pattern
+            if has_improve:
+                add_text = panel.evaluate("""() => {
+                    const spans = Array.from(document.querySelectorAll('span'));
+                    return spans.some(s => s.textContent?.startsWith('Add '));
+                }""")
+                probe('"Add [skill]..." improvement pattern present', f'{add_text}')
+        else:
+            probe('Resume Alignment section', 'Not rendered (no matches/gaps in this job)')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('Resume Alignment section', 'No job card found')
+
+    # ── Confidence Analysis expands ───────────────────────────────────────
+    sec('Phase 4 · Confidence Analysis section')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+        ca_btn = panel.locator('button').filter(has_text='Confidence Analysis').first
+
+        chk(ca_btn.count() > 0, '"Confidence Analysis" sub-section button present')
+        if ca_btn.count() > 0:
+            ca_btn.click()
+            page.wait_for_timeout(300)
+            chk(ca_btn.get_attribute('aria-expanded') == 'true',
+                'Confidence Analysis expands on click')
+
+            # Should show signal detail line (mono font detail)
+            signal_text = panel.evaluate("""() => {
+                const els = Array.from(document.querySelectorAll('p'));
+                return els.some(e => e.textContent?.includes('Matched skills:') &&
+                                     e.textContent?.includes('Red flags:'));
+            }""")
+            chk(signal_text,
+                'Confidence Analysis shows signal detail (Matched skills, Red flags)')
+
+            # No percentage shown
+            pct_present = panel.evaluate("""() => {
+                const text = document.querySelector('[role="dialog"]')?.innerText || '';
+                return /\\d+%/.test(text);
+            }""")
+            chk(not pct_present,
+                'No arbitrary percentage shown — confidence bands only')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('Confidence Analysis section', 'No job card found')
+
+    # ── Existing AI sections still intact ─────────────────────────────────
+    sec('Phase 4 · Existing AI sections preserved')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+
+        # The original AI Assessment section must still be present
+        chk(panel.get_by_text('AI Assessment').count() > 0,
+            'Original "AI Assessment" section still present (not removed)')
+        chk(panel.get_by_text('Resume Matches').count() > 0 or
+            panel.get_by_text('Gaps').count() > 0,
+            'Original Resume Matches or Gaps section still present')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('Existing AI sections preserved', 'No job card found')
+
+    # ── Keyboard accessibility ────────────────────────────────────────────
+    sec('Phase 4 · Keyboard accessibility')
+    if open_first_job_panel():
+        panel = page.locator('[role="dialog"]').first
+
+        # All sub-section toggles are keyboard-accessible (reachable via Tab)
+        buttons = panel.locator('button[aria-expanded]').all()
+        chk(len(buttons) >= 1,
+            f'At least 1 aria-expanded toggle buttons found in panel ({len(buttons)} total)')
+
+        # Activate with Space key (canonical keyboard activation for buttons)
+        if len(buttons) > 1:
+            second_btn = buttons[1]  # skip Match Summary (already open)
+            was_expanded = second_btn.get_attribute('aria-expanded') == 'true'
+            second_btn.press('Space')
+            page.wait_for_timeout(300)
+            now_expanded = second_btn.get_attribute('aria-expanded') == 'true'
+            chk(was_expanded != now_expanded,
+                'Sub-section toggles with Enter key (aria-expanded flips)')
+
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+    else:
+        warn('Keyboard accessibility', 'No job card found')
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────

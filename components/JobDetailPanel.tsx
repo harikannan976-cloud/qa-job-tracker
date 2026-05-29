@@ -7,6 +7,7 @@ import { Job } from '@/lib/airtable'
 import { logActivity, getActivity, activityLabel, timeAgo, ActivityEntry } from '@/lib/activity'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import CoverLetterModal from './CoverLetterModal'
+import MatchIntelligencePanel from './MatchIntelligencePanel'
 import { loadPreferences } from '@/lib/preferences'
 
 // ─── Typewriter ──────────────────────────────────────────────────────────────
@@ -404,6 +405,9 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
               </button>
             </div>
           </section>
+
+          {/* AI Match Intelligence — Phase 4 */}
+          <MatchIntelligencePanel job={job} />
 
           {/* AI Assessment */}
           {job.ai_reasoning && (
