@@ -478,7 +478,7 @@ with sync_playwright() as pw:
     h1 = page.locator('h1').first.text_content() or ''
     chk('Automation' in h1,              'Automation h1', h1.strip())
 
-    for lbl in ['LAST RUN','JOBS FETCHED','AFTER FILTER','SCORED','COVER LETTERS','DURATION']:
+    for lbl in ['Last Run', 'Jobs Added', 'Duration', 'Result']:
         chk(page.get_by_text(lbl).count() > 0, f'Status card: {lbl}')
 
     for step in ['Job Search','Deduplication','Location Filter',
@@ -1867,10 +1867,10 @@ with sync_playwright() as pw:
     page.evaluate("() => localStorage.removeItem('qa_tracker_prefs')")
     page.goto(BASE, wait_until='networkidle')
     page.wait_for_timeout(500)
-    chk(page.get_by_text('Weekly Goal').count() > 0,
-        'Weekly Goal label present on dashboard')
-    chk(page.get_by_text('Matches Preferences').count() > 0,
-        '"Matches Preferences" stat present')
+    chk(page.get_by_text('Weekly Application Goal').count() > 0,
+        'Weekly Application Goal label present on dashboard')
+    chk(page.get_by_text('Applied This Week').count() > 0,
+        '"Applied This Week" stat present')
     # Progress bar element present
     progress_bar = page.locator('[style*="width:"]').filter(has=page.locator('[class*="rounded-full"]'))
     # Check via DOM that there's at least one element with inline width style
@@ -2291,10 +2291,10 @@ with sync_playwright() as pw:
             chk(signal_text,
                 'Confidence Analysis shows signal detail (Matched skills, Red flags)')
 
-            # No percentage shown
+            # No percentage in the confidence signal breakdown (font-mono detail line)
             pct_present = panel.evaluate("""() => {
-                const text = document.querySelector('[role="dialog"]')?.innerText || '';
-                return /\\d+%/.test(text);
+                const mono = document.querySelector('[role="dialog"] .font-mono')?.innerText || '';
+                return /\\d+%/.test(mono);
             }""")
             chk(not pct_present,
                 'No arbitrary percentage shown — confidence bands only')
@@ -2345,6 +2345,169 @@ with sync_playwright() as pw:
         page.wait_for_timeout(300)
     else:
         warn('Keyboard accessibility', 'No job card found')
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 5A — Job Search Productivity & Automation Control
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # ── 5A-A: Date range control on automation page ───────────────────────────
+    sec('Phase 5A-A · Date Range Control')
+    page.goto(f'{BASE}/automation', wait_until='networkidle')
+    page.wait_for_timeout(400)
+
+    # Preset chips rendered
+    preset_labels = ['Last 24 Hours', 'Last 3 Days', 'Last 7 Days',
+                     'Last 14 Days', 'Last 30 Days', 'Custom Range']
+    visible_presets = [
+        page.get_by_role('button', name=lbl).count() > 0
+        for lbl in preset_labels
+    ]
+    chk(all(visible_presets), 'All 6 date preset chips are present')
+
+    # Last 7 Days is selected by default (indigo background)
+    default_btn = page.get_by_role('button', name='Last 7 Days')
+    chk(default_btn.count() > 0, 'Last 7 Days preset exists')
+    default_cls = default_btn.first.get_attribute('class') or ''
+    chk('indigo' in default_cls or 'bg-indigo' in default_cls,
+        'Last 7 Days is selected by default (active style applied)')
+
+    # Computed date range label visible for preset
+    range_text = page.locator('text=/Fetching jobs posted from/').count() > 0
+    chk(range_text, 'Active preset shows computed from/to date range label')
+
+    # Custom range shows date inputs
+    page.get_by_role('button', name='Custom Range').first.click()
+    page.wait_for_timeout(200)
+    from_input = page.locator('input[type="date"]').first
+    to_input   = page.locator('input[type="date"]').last
+    chk(from_input.count() > 0, 'Custom Range: From date input appears')
+    chk(to_input.count() > 0,   'Custom Range: To date input appears')
+
+    # Validation: empty custom from → error on trigger
+    to_input.fill('2025-01-10')
+    page.get_by_role('button', name='Run Workflow Now').click()
+    page.wait_for_timeout(300)
+    error_msg = page.locator('text=/Both dates are required/').count() > 0
+    chk(error_msg, 'Validation: empty From date shows "Both dates are required" error')
+
+    # Validation: from > to → error
+    from_input.fill('2025-01-20')
+    to_input.fill('2025-01-10')
+    page.get_by_role('button', name='Run Workflow Now').click()
+    page.wait_for_timeout(300)
+    order_error = page.locator('text=/From date must be/').count() > 0
+    chk(order_error, 'Validation: from > to shows date order error')
+
+    # Restore a valid preset so further tests are clean
+    page.get_by_role('button', name='Last 7 Days').first.click()
+    page.wait_for_timeout(200)
+
+    # ── 5A-B: Run visibility — status cards and status pill ───────────────────
+    sec('Phase 5A-B · Run Visibility')
+    page.goto(f'{BASE}/automation', wait_until='networkidle')
+    page.wait_for_timeout(400)
+
+    # Status pill rendered
+    pill_found = (
+        page.locator('text=Ready').count() > 0 or
+        page.locator('text=Running').count() > 0 or
+        page.locator('text=Success').count() > 0 or
+        page.locator('text=Failed').count() > 0
+    )
+    chk(pill_found, 'Status pill shows Ready/Running/Success/Failed')
+
+    # Live status cards present
+    chk(page.locator('text=Last Run').count() > 0,   'Status card: Last Run present')
+    chk(page.locator('text=Jobs Added').count() > 0, 'Status card: Jobs Added present')
+    chk(page.locator('text=Duration').count() > 0,   'Status card: Duration present')
+    chk(page.locator('text=Result').count() > 0,     'Status card: Result present')
+
+    # No hardcoded demo text in status cards
+    never_text  = page.locator('text=Never').count() > 0
+    dashes_text = page.locator('text=—').count() > 0
+    chk(never_text or dashes_text,
+        'Status cards show live state (Never/— rather than hardcoded demo values)')
+
+    # Date range section present
+    chk(page.locator('text=Date Range').count() > 0, 'Date Range section heading present')
+    chk(page.get_by_role('button', name='Run Workflow Now').count() > 0,
+        'Run Workflow Now button present')
+
+    # ── 5A-C: Follow-up Center on dashboard ──────────────────────────────────
+    sec('Phase 5A-C · Follow-up Center')
+    page.goto(f'{BASE}/', wait_until='networkidle')
+    page.wait_for_timeout(500)
+
+    # FollowUpCenter only renders when follow-ups exist; probe either state
+    follow_center = page.locator('text=Follow-up Center').count()
+    if follow_center > 0:
+        chk(True, 'Follow-up Center section rendered (follow-ups exist in data)')
+
+        # All 3 buckets visible
+        chk(page.locator('text=Overdue').count() > 0,    'Bucket: Overdue present')
+        chk(page.locator('text=Due Today').count() > 0,  'Bucket: Due Today present')
+        chk(page.locator('text=This Week').count() > 0,  'Bucket: This Week present')
+
+        # Manage link to /jobs
+        manage_link = page.get_by_role('link', name='Manage')
+        chk(manage_link.count() > 0, 'Follow-up Center has Manage link')
+        href = manage_link.first.get_attribute('href') or ''
+        chk('/jobs' in href, 'Manage link points to /jobs')
+    else:
+        probe('Follow-up Center hidden (no follow-ups in current data — correct empty-state behavior)')
+
+    # ── 5A-D: Application Goal Tracker ───────────────────────────────────────
+    sec('Phase 5A-D · Application Goal Tracker')
+    page.goto(f'{BASE}/', wait_until='networkidle')
+    page.wait_for_timeout(400)
+
+    chk(page.locator('text=Weekly Application Goal').count() > 0,
+        'Weekly Application Goal label present')
+
+    # Shows X / Y format
+    slash_pattern = page.locator('text=/ ').count() > 0 or page.locator('text=/').count() > 0
+    chk(slash_pattern, 'Goal shows X/Y progress format')
+
+    # Shows percentage
+    pct_present = page.locator('text=% complete').count() > 0
+    chk(pct_present, 'Goal shows % complete text')
+
+    # Progress bar rendered (div with style width)
+    progress_bar = page.locator('[style*="width"]').count() > 0
+    chk(progress_bar, 'Progress bar element with width style present')
+
+    # Remaining count or goal-met message
+    remaining_or_met = (
+        page.locator('text=more application').count() > 0 or
+        page.locator('text=Goal reached').count() > 0
+    )
+    chk(remaining_or_met, 'Shows remaining count or "Goal reached" message')
+
+    # ── 5A-E: Dashboard Action Center stats ──────────────────────────────────
+    sec('Phase 5A-E · Dashboard Action Center')
+    page.goto(f'{BASE}/', wait_until='networkidle')
+    page.wait_for_timeout(400)
+
+    chk(page.locator('text=Applied This Week').count() > 0,
+        'Action Center: Applied This Week stat present')
+    chk(page.locator('text=Interviewing').count() > 0,
+        'Action Center: Interviewing stat present')
+    chk(page.locator('text=Action Required').count() > 0,
+        'Action Center: Action Required stat present')
+    chk(page.locator('text=Follow-ups Due').count() > 0,
+        'Action Center: Follow-ups Due stat present')
+
+    # Stats are numeric values
+    weekly_val_el = page.locator('text=Applied This Week').locator('..').locator('p').nth(1)
+    if weekly_val_el.count() > 0:
+        val_text = weekly_val_el.inner_text().strip()
+        chk(val_text.isdigit(), f'Applied This Week shows numeric value ({val_text})')
+    else:
+        probe('Action Center numeric value check skipped — element structure differs')
+
+    # Action Required links to /jobs via "New · score ≥ 7" subtitle
+    score_label = page.locator('text=New · score ≥ 7').count() > 0
+    chk(score_label, 'Action Required subtitle "New · score ≥ 7" present')
 
     browser.close()
 

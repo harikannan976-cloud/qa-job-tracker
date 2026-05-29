@@ -4,6 +4,7 @@ import { fetchJobs } from '@/lib/airtable'
 import ActivityFeed from '@/components/ActivityFeed'
 import DashboardActionItems from '@/components/DashboardActionItems'
 import DashboardPreferencePanel from '@/components/DashboardPreferencePanel'
+import FollowUpCenter from '@/components/FollowUpCenter'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { ArrowRight, GitBranch, FileText, BarChart2, Sparkles } from 'lucide-react'
 
@@ -51,8 +52,11 @@ async function DashboardContent() {
         ))}
       </div>
 
-      {/* Preference snapshot */}
+      {/* Action center */}
       <DashboardPreferencePanel jobs={jobs} />
+
+      {/* Follow-up center — only rendered when follow-ups exist */}
+      <FollowUpCenter jobs={jobs} />
 
       {/* Body */}
       <div className="flex gap-6">

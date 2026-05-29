@@ -3,98 +3,113 @@
 import { useMemo } from 'react'
 import { Job } from '@/lib/airtable'
 import { loadPreferences } from '@/lib/preferences'
+import { getWeeklyApps } from '@/lib/followUpHelpers'
 
-interface Props {
-  jobs: Job[]
-}
+interface Props { jobs: Job[] }
 
 export default function DashboardPreferencePanel({ jobs }: Props) {
   const prefs = loadPreferences()
 
-  const weeklyApps = useMemo(() => {
-    const today = new Date()
-    const dow   = today.getDay()
-    const monday = new Date(today)
-    monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
-    monday.setHours(0, 0, 0, 0)
-    const mondayStr = monday.toISOString().split('T')[0]
-    return jobs.filter(j =>
-      j.applied_date && j.applied_date >= mondayStr &&
-      ['Applied', 'Interviewing', 'Offer'].includes(j.status)
-    ).length
-  }, [jobs])
+  const weeklyApps = useMemo(() => getWeeklyApps(jobs), [jobs])
 
-  const prefMatchCount = useMemo(() => {
-    return jobs.filter(job => {
-      const locationText = [job.job_city, job.job_state, job.job_country].join(' ').toLowerCase()
-      const locationOk = prefs.preferredLocations.length === 0 ||
-        prefs.preferredLocations.some(loc =>
-          loc.toLowerCase() === 'remote'
-            ? job.job_is_remote
-            : locationText.includes(loc.toLowerCase())
-        )
-      const scoreOk = prefs.minScoreThreshold === 0 || job.ai_score >= prefs.minScoreThreshold
-      const noExcluded = prefs.excludedKeywords.length === 0 || (() => {
-        const txt = `${job.job_title} ${job.ai_reasoning}`.toLowerCase()
-        return !prefs.excludedKeywords.some(kw => txt.includes(kw.toLowerCase()))
-      })()
-      return locationOk && scoreOk && noExcluded
-    }).length
-  }, [jobs, prefs])
+  const interviewing = useMemo(
+    () => jobs.filter(j => j.status === 'Interviewing').length,
+    [jobs]
+  )
+
+  const actionRequired = useMemo(
+    () => jobs.filter(j => j.status === 'New' && j.ai_score >= 7).length,
+    [jobs]
+  )
 
   const followUpDue = useMemo(() => {
     const today = new Date().toISOString().split('T')[0]
     return jobs.filter(j =>
-      j.status === 'Applied' && j.follow_up_date && j.follow_up_date <= today
+      j.follow_up_date &&
+      j.follow_up_date <= today &&
+      ['Applied', 'Interviewing'].includes(j.status)
     ).length
   }, [jobs])
 
   const goal    = prefs.weeklyApplicationGoal
-  const goalPct = Math.min(100, Math.round((weeklyApps / goal) * 100))
+  const goalPct = goal > 0 ? Math.min(100, Math.round((weeklyApps / goal) * 100)) : 0
   const goalMet = weeklyApps >= goal
 
   return (
-    <div className="bg-[#111118] border border-[#1a1a26] rounded-xl px-5 py-4 mb-6">
-      <div className="flex flex-wrap items-center gap-6">
+    <div className="bg-[#111118] border border-[#1a1a26] rounded-xl px-5 py-4 mb-4">
 
-        {/* Weekly goal progress */}
-        <div className="flex-1 min-w-[180px]">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">Weekly Goal</span>
-            <span className="text-[12px] text-zinc-400 tabular-nums font-medium">{weeklyApps}/{goal}</span>
-          </div>
-          <div className="h-1 bg-[#1a1a26] rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ${
-                goalMet ? 'bg-emerald-500' : goalPct >= 60 ? 'bg-indigo-500' : 'bg-zinc-600'
-              }`}
-              style={{ width: `${goalPct}%` }}
-            />
-          </div>
-          <p className="text-[10px] text-zinc-700 mt-1">
-            {goalMet ? 'Goal reached 🎉' : `${goal - weeklyApps} more to hit goal`}
+      {/* Weekly goal progress */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">
+            Weekly Application Goal
+          </span>
+          <span className={`text-[11px] font-semibold tabular-nums ${
+            goalMet ? 'text-emerald-400' : 'text-zinc-400'
+          }`}>
+            {weeklyApps} / {goal} · {goalPct}% complete
+          </span>
+        </div>
+        <div className="h-1.5 bg-[#1a1a26] rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${
+              goalMet ? 'bg-emerald-500' : goalPct >= 60 ? 'bg-indigo-500' : 'bg-zinc-600'
+            }`}
+            style={{ width: `${goalPct}%` }}
+          />
+        </div>
+        <p className="text-[10px] text-zinc-700 mt-1">
+          {goalMet
+            ? 'Goal reached this week'
+            : `${goal - weeklyApps} more application${goal - weeklyApps !== 1 ? 's' : ''} to reach goal`}
+        </p>
+      </div>
+
+      {/* Action stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-[#1a1a26]">
+        <div>
+          <p className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider mb-1">
+            Applied This Week
+          </p>
+          <p className={`text-xl font-semibold tabular-nums leading-none ${
+            goalMet ? 'text-emerald-400' : 'text-zinc-200'
+          }`}>{weeklyApps}</p>
+          <p className="text-[10px] text-zinc-700 mt-0.5">
+            {goalMet ? 'Goal met' : `of ${goal} goal`}
           </p>
         </div>
 
-        <div className="hidden sm:block w-px h-8 bg-[#1a1a26]" />
-
-        {/* Preference matches */}
         <div>
-          <p className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider mb-1">Matches Preferences</p>
-          <p className="text-xl font-semibold text-indigo-400 tabular-nums leading-none">{prefMatchCount}</p>
+          <p className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider mb-1">
+            Interviewing
+          </p>
+          <p className="text-xl font-semibold tabular-nums leading-none text-amber-400">
+            {interviewing}
+          </p>
+          <p className="text-[10px] text-zinc-700 mt-0.5">active rounds</p>
         </div>
 
-        {followUpDue > 0 && <div className="hidden sm:block w-px h-8 bg-[#1a1a26]" />}
+        <div>
+          <p className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider mb-1">
+            Action Required
+          </p>
+          <p className="text-xl font-semibold tabular-nums leading-none text-indigo-400">
+            {actionRequired}
+          </p>
+          <p className="text-[10px] text-zinc-700 mt-0.5">New · score ≥ 7</p>
+        </div>
 
-        {/* Follow-up due */}
-        {followUpDue > 0 && (
-          <div>
-            <p className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider mb-1">Follow-up Due</p>
-            <p className="text-xl font-semibold text-amber-400 tabular-nums leading-none">{followUpDue}</p>
-          </div>
-        )}
-
+        <div>
+          <p className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider mb-1">
+            Follow-ups Due
+          </p>
+          <p className={`text-xl font-semibold tabular-nums leading-none ${
+            followUpDue > 0 ? 'text-red-400' : 'text-zinc-700'
+          }`}>{followUpDue}</p>
+          <p className="text-[10px] text-zinc-700 mt-0.5">today or overdue</p>
+        </div>
       </div>
+
     </div>
   )
 }
