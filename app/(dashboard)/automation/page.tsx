@@ -23,10 +23,20 @@ interface PersistedRun {
   toDate:    string
 }
 
+interface RunHistoryEntry {
+  ts:      string   // display-formatted timestamp
+  dur:     string   // display-formatted duration
+  newJobs: number
+  status:  'success' | 'error'
+  dateRange: string  // "YYYY-MM-DD → YYYY-MM-DD"
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const RUN_KEY    = 'automation_active_run'
-const LS_LAST_RUN = 'automation_last_run'
+const RUN_KEY        = 'automation_active_run'
+const LS_LAST_RUN    = 'automation_last_run'
+const LS_RUN_HISTORY = 'automation_run_history'
+const MAX_HISTORY    = 10
 
 const PRESETS: { key: DatePreset; label: string }[] = [
   { key: '24h',    label: 'Last 24 Hours' },
@@ -53,15 +63,6 @@ const COSTS = [
   { label: 'Per Cover Letter', value: '$0.048' },
 ]
 
-const RUNS = [
-  { ts: 'May 28 · 08:00', dur: '2m 14s', processed: 47, scored: 12, letters: 4, status: 'success' as const },
-  { ts: 'May 27 · 08:00', dur: '1m 58s', processed: 31, scored: 8,  letters: 3, status: 'success' as const },
-  { ts: 'May 26 · 08:00', dur: '2m 02s', processed: 39, scored: 10, letters: 4, status: 'success' as const },
-  { ts: 'May 25 · 08:00', dur: '1m 45s', processed: 28, scored: 7,  letters: 2, status: 'success' as const },
-  { ts: 'May 24 · 08:00', dur: '3m 12s', processed: 52, scored: 14, letters: 5, status: 'success' as const },
-  { ts: 'May 23 · 08:00', dur: '0m 47s', processed: 12, scored: 3,  letters: 1, status: 'warning' as const },
-  { ts: 'May 22 · 08:00', dur: '2m 33s', processed: 44, scored: 11, letters: 4, status: 'success' as const },
-]
 
 const PIPELINE_STEPS = [
   { icon: Search,       label: 'Job Search',          detail: '18 searches · JSearch + Adzuna', stat: '47 fetched',           color: 'indigo'  },
@@ -140,6 +141,34 @@ function loadLastRun(): PersistedRun | null {
   } catch { return null }
 }
 
+function loadRunHistory(): RunHistoryEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(LS_RUN_HISTORY)
+    return raw ? (JSON.parse(raw) as RunHistoryEntry[]) : []
+  } catch { return [] }
+}
+
+function formatRunTimestamp(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    ' · ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function appendRunHistory(run: PersistedRun): RunHistoryEntry[] {
+  const prev = loadRunHistory()
+  const entry: RunHistoryEntry = {
+    ts:        formatRunTimestamp(run.timestamp),
+    dur:       formatElapsed(run.duration),
+    newJobs:   run.newJobs,
+    status:    run.status,
+    dateRange: run.fromDate && run.toDate ? `${run.fromDate} → ${run.toDate}` : '',
+  }
+  const next = [entry, ...prev].slice(0, MAX_HISTORY)
+  try { localStorage.setItem(LS_RUN_HISTORY, JSON.stringify(next)) } catch { /* quota */ }
+  return next
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AutomationPage() {
@@ -152,6 +181,7 @@ export default function AutomationPage() {
   const [elapsed,    setElapsed]    = useState(0)
   const [newJobs,    setNewJobs]    = useState(0)
   const [lastRun,    setLastRun]    = useState<PersistedRun | null>(() => loadLastRun())
+  const [runHistory, setRunHistory] = useState<RunHistoryEntry[]>(() => loadRunHistory())
 
   // Date range state
   const [preset,     setPreset]     = useState<DatePreset>('7d')
@@ -191,6 +221,7 @@ export default function AutomationPage() {
     }
     try { localStorage.setItem(LS_LAST_RUN, JSON.stringify(run)) } catch { /* quota */ }
     setLastRun(run)
+    setRunHistory(appendRunHistory(run))
   }
 
   function finishRun(status: 'done' | 'error', addedCount = 0) {
@@ -582,7 +613,12 @@ export default function AutomationPage() {
 
         {/* Pipeline visualization */}
         <div className="lg:col-span-2 bg-[#111118] border border-[#1a1a26] rounded-2xl p-5">
-          <p className="text-[14px] font-semibold text-white mb-5">Pipeline Visualization</p>
+          <div className="flex items-center justify-between mb-5">
+            <p className="text-[14px] font-semibold text-white">Pipeline Visualization</p>
+            <span className="text-[10px] text-zinc-600 bg-[#16161e] border border-[#252535] px-2 py-1 rounded-md">
+              example pipeline output
+            </span>
+          </div>
           <div className="space-y-1">
             {PIPELINE_STEPS.map((step, i) => {
               const c = STEP_COLORS[step.color]
@@ -656,44 +692,65 @@ export default function AutomationPage() {
 
       </div>
 
-      {/* Recent runs table — demo data */}
+      {/* Recent runs table — live from localStorage */}
       <div className="bg-[#111118] border border-[#1a1a26] rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-[#1a1a26]">
           <p className="text-[14px] font-semibold text-white">Recent Workflow Runs</p>
-          <p className="text-[12px] text-zinc-600 mt-0.5">Last 7 runs · demo data</p>
+          <p className="text-[12px] text-zinc-600 mt-0.5">
+            {runHistory.length > 0
+              ? `Last ${runHistory.length} run${runHistory.length !== 1 ? 's' : ''} · this browser`
+              : 'No runs recorded yet in this browser'}
+          </p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[#1a1a26]">
-                {['Timestamp', 'Duration', 'Processed', 'Scored', 'Letters', 'Status'].map(h => (
-                  <th key={h} className="text-left px-5 py-3 text-[11px] text-zinc-600 uppercase tracking-wider font-medium">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {RUNS.map((run, i) => (
-                <tr key={i} className="border-b border-[#1a1a26]/50 hover:bg-[#16161e] transition-colors">
-                  <td className="px-5 py-3 text-[13px] text-zinc-300 font-medium">{run.ts}</td>
-                  <td className="px-5 py-3 text-[13px] text-zinc-400">{run.dur}</td>
-                  <td className="px-5 py-3 text-[13px] text-zinc-400">{run.processed}</td>
-                  <td className="px-5 py-3 text-[13px] text-zinc-400">{run.scored}</td>
-                  <td className="px-5 py-3 text-[13px] text-zinc-400">{run.letters}</td>
-                  <td className="px-5 py-3">
-                    <span className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full border font-medium ${STATUS_BADGE[run.status]}`}>
-                      {run.status === 'success'
-                        ? <><CheckCircle className="w-3 h-3" /> Success</>
-                        : <><AlertTriangle className="w-3 h-3" /> Warning</>
-                      }
-                    </span>
-                  </td>
+
+        {runHistory.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <p className="text-[13px] text-zinc-500 font-medium mb-1">No run history yet</p>
+            <p className="text-[12px] text-zinc-700 max-w-[260px] leading-relaxed">
+              Run history is recorded locally after each workflow trigger. Trigger a run above to start tracking.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#1a1a26]">
+                  {['Timestamp', 'Duration', 'New Jobs', 'Date Range', 'Status'].map(h => (
+                    <th key={h} className="text-left px-5 py-3 text-[11px] text-zinc-600 uppercase tracking-wider font-medium">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {runHistory.map((run, i) => (
+                  <tr key={i} className="border-b border-[#1a1a26]/50 hover:bg-[#16161e] transition-colors">
+                    <td className="px-5 py-3 text-[13px] text-zinc-300 font-medium">{run.ts}</td>
+                    <td className="px-5 py-3 text-[13px] text-zinc-400 tabular-nums">{run.dur}</td>
+                    <td className="px-5 py-3 text-[13px] tabular-nums">
+                      <span className={run.newJobs > 0 ? 'text-emerald-400 font-medium' : 'text-zinc-500'}>
+                        {run.newJobs > 0 ? run.newJobs : '—'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-[12px] text-zinc-600 font-mono">
+                      {run.dateRange || '—'}
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full border font-medium ${
+                        run.status === 'success' ? STATUS_BADGE.success : STATUS_BADGE.error
+                      }`}>
+                        {run.status === 'success'
+                          ? <><CheckCircle className="w-3 h-3" /> Success</>
+                          : <><AlertTriangle className="w-3 h-3" /> Failed</>
+                        }
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
     </div>

@@ -490,8 +490,12 @@ with sync_playwright() as pw:
     chk(page.get_by_text('0 8 * * *').count() > 0,            'Cron expression visible')
     chk(page.get_by_text('Recent Workflow Runs').count() > 0, 'Recent Workflow Runs table')
 
-    rows = page.locator('tbody tr')
-    chk(rows.count() == 7,               'Run history: 7 rows',               f'{rows.count()} rows')
+    # Table is now live from localStorage — fresh browser has no history yet;
+    # verify the empty state message renders instead of demo rows
+    has_rows     = page.locator('tbody tr').count() > 0
+    has_empty    = page.locator('text=No run history yet').count() > 0
+    chk(has_rows or has_empty,
+        'Run history: live table or empty state present')
 
     run_btn = page.get_by_role('button', name='Run Workflow Now')
     chk(run_btn.count() > 0,            '"Run Workflow Now" button present')
