@@ -5,6 +5,8 @@ import ActivityFeed from '@/components/ActivityFeed'
 import DashboardActionItems from '@/components/DashboardActionItems'
 import DashboardPreferencePanel from '@/components/DashboardPreferencePanel'
 import FollowUpCenter from '@/components/FollowUpCenter'
+import TodaysFocus from '@/components/TodaysFocus'
+import InterviewTracker from '@/components/InterviewTracker'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { ArrowRight, GitBranch, FileText, BarChart2, Sparkles } from 'lucide-react'
 
@@ -51,6 +53,9 @@ async function DashboardContent() {
           </Link>
         ))}
       </div>
+
+      {/* Today's Focus — priority action list (hidden when nothing to do) */}
+      <TodaysFocus jobs={jobs} />
 
       {/* Action center */}
       <DashboardPreferencePanel jobs={jobs} />
@@ -99,6 +104,9 @@ async function DashboardContent() {
               <DashboardActionItems initialJobs={actionItems} />
             )}
           </section>
+
+          {/* Active Opportunities — stage-grouped tracker (hidden when no tracked jobs) */}
+          <InterviewTracker jobs={jobs} />
 
           {/* Quick nav */}
           <div className="grid grid-cols-3 gap-3">

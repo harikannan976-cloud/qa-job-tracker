@@ -2513,6 +2513,270 @@ with sync_playwright() as pw:
     score_label = page.locator('text=New · score ≥ 7').count() > 0
     chk(score_label, 'Action Required subtitle "New · score ≥ 7" present')
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 5B — Interview Tracker & Today's Focus
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # ── 5B-A: Today's Focus widget ────────────────────────────────────────────
+    sec("Phase 5B-A · Today's Focus widget")
+    page.goto(BASE, wait_until='networkidle')
+    page.wait_for_timeout(500)
+
+    focus_count = page.locator("text=Today's Focus").count()
+    if focus_count > 0:
+        chk(True, "Today's Focus section rendered")
+
+        # Section is either showing items OR the "All clear" empty state
+        is_all_clear = page.locator('text=All clear').count() > 0
+
+        # Sub-heading: 'Top priority actions' when items exist, 'All clear' when empty
+        sub_present = (
+            page.locator('text=Top priority actions').count() > 0 or is_all_clear
+        )
+        chk(sub_present, "Today's Focus sub-heading present ('Top priority actions' or 'All clear')")
+
+        if not is_all_clear:
+            # At most 5 action item rows inside the section
+            rows = page.evaluate("""() => {
+                const sec = Array.from(document.querySelectorAll('section'))
+                    .find(s => s.textContent?.includes("Today's Focus"));
+                if (!sec) return 0;
+                return sec.querySelectorAll('.divide-y > div').length;
+            }""")
+            chk(0 < rows <= 5, f"Today's Focus shows 1–5 action rows (found {rows})")
+
+            # View all link → /jobs
+            view_link = page.evaluate("""() => {
+                const sec = Array.from(document.querySelectorAll('section'))
+                    .find(s => s.textContent?.includes("Today's Focus"));
+                const a = sec?.querySelector('a');
+                return a ? a.getAttribute('href') : null;
+            }""")
+            chk(view_link is not None and '/jobs' in view_link,
+                "Today's Focus has 'View all' link → /jobs")
+
+            # At least one action type badge visible
+            badges = ['Overdue', 'Interviewing', 'High Match', 'No Follow-up',
+                      'No Contact', 'No Notes']
+            any_badge = any(page.get_by_text(b).count() > 0 for b in badges)
+            chk(any_badge, 'At least one action-type badge visible in Today\'s Focus')
+        else:
+            probe("Today's Focus in 'All clear' state — no action rows (correct behavior)")
+
+    else:
+        probe("Today's Focus hidden — no jobs in current data (correct behavior)")
+
+    # ── 5B-B: Active Opportunities (Interview Tracker) ────────────────────────
+    sec('Phase 5B-B · Active Opportunities (Interview Tracker)')
+    page.goto(BASE, wait_until='networkidle')
+    page.wait_for_timeout(500)
+
+    tracker_count = page.locator('text=Active Opportunities').count()
+    if tracker_count > 0:
+        chk(True, 'Active Opportunities section rendered')
+
+        # Sub-heading
+        chk(page.locator('text=Grouped by stage').count() > 0,
+            'Active Opportunities sub-heading "Grouped by stage" present')
+
+        # At least one stage group label visible
+        stage_labels = ['Interviewing', 'Offer', 'Applied', 'Rejected']
+        visible = [s for s in stage_labels if page.get_by_text(s).count() > 0]
+        chk(len(visible) > 0,
+            f'At least one stage group visible: {visible}')
+
+        # Pipeline link
+        pipeline_links = page.get_by_role('link', name='Pipeline')
+        chk(pipeline_links.count() > 0, 'Active Opportunities has Pipeline link')
+        if pipeline_links.count() > 0:
+            href = pipeline_links.first.get_attribute('href') or ''
+            chk('/pipeline' in href, 'Pipeline link points to /pipeline')
+
+        # Stage count badges (small rounded-full span next to stage label)
+        count_badges = page.evaluate("""() => {
+            const sec = Array.from(document.querySelectorAll('section'))
+                .find(s => s.textContent?.includes('Active Opportunities'));
+            if (!sec) return 0;
+            return sec.querySelectorAll('span.rounded-full').length;
+        }""")
+        chk(count_badges > 0, 'Stage count badges present in Active Opportunities')
+
+        # Job rows within tracker
+        job_rows = page.evaluate("""() => {
+            const sec = Array.from(document.querySelectorAll('section'))
+                .find(s => s.textContent?.includes('Active Opportunities'));
+            if (!sec) return 0;
+            return sec.querySelectorAll('[class*="rounded-lg"][class*="border"]').length;
+        }""")
+        chk(job_rows > 0, f'Job rows visible in stage groups ({job_rows} rows)')
+
+    else:
+        probe('Active Opportunities hidden — no Applied/Interviewing/Offer/Rejected jobs in current data (correct behavior)')
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 5C — TodaysFocus polish + InterviewTracker tabs
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # ── 5C-A: Priority styling + deduplication + Apply button ─────────────────
+    sec("Phase 5C-A · Today's Focus — priority styling & dedupe")
+    page.goto(BASE, wait_until='networkidle')
+    page.wait_for_timeout(500)
+
+    focus_present = page.locator("text=Today's Focus").count() > 0
+    is_all_clear  = page.locator('text=All clear').count() > 0
+
+    if focus_present and not is_all_clear:
+        # Priority-colored icon containers: P1/P2/P3 get themed colors
+        colored_icons = page.evaluate("""() => {
+            const sec = Array.from(document.querySelectorAll('section'))
+                .find(s => s.textContent?.includes("Today's Focus") &&
+                           !s.textContent?.includes('All clear'));
+            if (!sec) return false;
+            const html = sec.innerHTML;
+            return html.includes('bg-red-500') || html.includes('bg-amber-500') ||
+                   html.includes('bg-indigo-500');
+        }""")
+        chk(colored_icons, "Priority-colored icon containers present for P1/P2/P3 items")
+
+        # Deduplication: no job title appears twice in the focus section
+        focus_titles = page.evaluate("""() => {
+            const sec = Array.from(document.querySelectorAll('section'))
+                .find(s => s.textContent?.includes("Today's Focus") &&
+                           !s.textContent?.includes('All clear'));
+            if (!sec) return [];
+            return Array.from(sec.querySelectorAll('.divide-y > div p:first-child'))
+                .map(el => el.textContent?.trim() ?? '');
+        }""")
+        unique_titles = list(set(focus_titles))
+        chk(len(focus_titles) == len(unique_titles),
+            f"No duplicate job titles in Today's Focus ({len(focus_titles)} items, all unique)")
+
+        # Apply button present for High Match items (if any exist)
+        high_match_count = page.evaluate("""() => {
+            const sec = Array.from(document.querySelectorAll('section'))
+                .find(s => s.textContent?.includes("Today's Focus") &&
+                           !s.textContent?.includes('All clear'));
+            if (!sec) return 0;
+            return Array.from(sec.querySelectorAll('span'))
+                .filter(s => s.textContent?.trim() === 'High Match').length;
+        }""")
+        if high_match_count > 0:
+            apply_btns = page.evaluate("""() => {
+                const sec = Array.from(document.querySelectorAll('section'))
+                    .find(s => s.textContent?.includes("Today's Focus") &&
+                               !s.textContent?.includes('All clear'));
+                if (!sec) return 0;
+                return Array.from(sec.querySelectorAll('button'))
+                    .filter(b => b.textContent?.trim() === 'Apply').length;
+            }""")
+            chk(apply_btns > 0,
+                f"Apply button present for High Match items ({high_match_count} High Match, {apply_btns} Apply buttons)")
+        else:
+            probe("No High Match items in Today's Focus — Apply button not present (correct)")
+
+    elif focus_present and is_all_clear:
+        # "All clear" empty state should show the CheckCircle icon area
+        chk(True, "Today's Focus shows 'All clear' empty state")
+        probe("No items to check for priority styling or deduplication in 'All clear' state")
+    else:
+        probe("Today's Focus not rendered — no jobs data (correct)")
+
+    # ── 5C-B: InterviewTracker stage filter tabs ──────────────────────────────
+    sec('Phase 5C-B · InterviewTracker stage filter tabs')
+    page.goto(BASE, wait_until='networkidle')
+    page.wait_for_timeout(500)
+
+    tracker_present   = page.locator('text=Active Opportunities').count() > 0
+    no_active_present = page.locator('text=No active applications').count() > 0
+
+    if tracker_present and not no_active_present:
+        chk(True, 'Active Opportunities section has data — tabs should be present')
+
+        # "All" tab must always be present (it's the default)
+        all_tab_text = page.evaluate("""() => {
+            const sec = Array.from(document.querySelectorAll('section'))
+                .find(s => s.textContent?.includes('Active Opportunities') &&
+                           !s.textContent?.includes('No active applications'));
+            if (!sec) return false;
+            return Array.from(sec.querySelectorAll('button'))
+                .some(b => b.textContent?.trim().startsWith('All'));
+        }""")
+        chk(all_tab_text, '"All" tab present in Active Opportunities section')
+
+        # At least one stage-specific tab beside "All"
+        stage_tabs = page.evaluate("""() => {
+            const sec = Array.from(document.querySelectorAll('section'))
+                .find(s => s.textContent?.includes('Active Opportunities') &&
+                           !s.textContent?.includes('No active applications'));
+            if (!sec) return [];
+            const stages = ['Interviewing', 'Offer', 'Applied', 'Rejected'];
+            return stages.filter(s =>
+                Array.from(sec.querySelectorAll('button'))
+                    .some(b => b.textContent?.trim().startsWith(s))
+            );
+        }""")
+        chk(len(stage_tabs) > 0, f'Stage tabs present for: {stage_tabs}')
+
+        # Clicking a stage tab filters: row count stays > 0 and ≤ total
+        if len(stage_tabs) > 0:
+            first_stage = stage_tabs[0]
+            rows_before = page.evaluate("""() => {
+                const sec = Array.from(document.querySelectorAll('section'))
+                    .find(s => s.textContent?.includes('Active Opportunities'));
+                return sec?.querySelectorAll('[class*="rounded-lg"][class*="border"]').length ?? 0;
+            }""")
+
+            # Click the first stage tab via evaluate (avoids ambiguous locator)
+            page.evaluate(f"""() => {{
+                const sec = Array.from(document.querySelectorAll('section'))
+                    .find(s => s.textContent?.includes('Active Opportunities'));
+                const btn = Array.from(sec?.querySelectorAll('button') ?? [])
+                    .find(b => b.textContent?.trim().startsWith('{first_stage}'));
+                btn?.click();
+            }}""")
+            page.wait_for_timeout(300)
+
+            rows_after = page.evaluate("""() => {
+                const sec = Array.from(document.querySelectorAll('section'))
+                    .find(s => s.textContent?.includes('Active Opportunities'));
+                return sec?.querySelectorAll('[class*="rounded-lg"][class*="border"]').length ?? 0;
+            }""")
+            chk(rows_after > 0,
+                f"After clicking '{first_stage}' tab: {rows_after} job rows still visible")
+            chk(rows_after <= rows_before,
+                f"Stage tab reduces/keeps row count ({rows_before} → {rows_after})")
+
+            # Clicking "All" restores full list
+            page.evaluate("""() => {
+                const sec = Array.from(document.querySelectorAll('section'))
+                    .find(s => s.textContent?.includes('Active Opportunities'));
+                const btn = Array.from(sec?.querySelectorAll('button') ?? [])
+                    .find(b => b.textContent?.trim().startsWith('All'));
+                btn?.click();
+            }""")
+            page.wait_for_timeout(200)
+            rows_restored = page.evaluate("""() => {
+                const sec = Array.from(document.querySelectorAll('section'))
+                    .find(s => s.textContent?.includes('Active Opportunities'));
+                return sec?.querySelectorAll('[class*="rounded-lg"][class*="border"]').length ?? 0;
+            }""")
+            chk(rows_restored == rows_before,
+                f"After clicking 'All' tab: full row count restored ({rows_restored})")
+
+    elif no_active_present:
+        chk(True, "InterviewTracker shows 'No active applications' empty state")
+        browse_link = page.evaluate("""() => {
+            const sec = Array.from(document.querySelectorAll('section'))
+                .find(s => s.textContent?.includes('No active applications'));
+            const a = Array.from(sec?.querySelectorAll('a') ?? [])
+                .find(a => a.textContent?.includes('Browse Jobs'));
+            return a ? a.getAttribute('href') : null;
+        }""")
+        chk(browse_link is not None and '/jobs' in (browse_link or ''),
+            "Empty state 'Browse Jobs' CTA links to /jobs")
+    else:
+        probe('Active Opportunities not rendered — no jobs (correct)')
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────
