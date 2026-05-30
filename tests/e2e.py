@@ -2784,6 +2784,84 @@ with sync_playwright() as pw:
     else:
         probe('Active Opportunities not rendered — no jobs (correct)')
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 6A — Application Queue
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    sec('Phase 6A · Application Queue page')
+    page.goto(f'{BASE}/queue', wait_until='networkidle')
+    page.wait_for_timeout(600)
+
+    # Page heading
+    chk(page.locator('h1:has-text("Application Queue")').count() > 0,
+        'Application Queue page heading present')
+
+    # Sub-heading
+    chk(page.locator('text=Prioritised').count() > 0 or
+        page.locator('text=prioritised').count() > 0 or
+        page.locator('text=ranked').count() > 0 or
+        page.locator('text=Live Data').count() > 0,
+        'Application Queue sub-heading / description present')
+
+    # Determine which state we're in
+    queue_empty   = page.locator('text=Queue is empty').count() > 0
+    all_done      = page.locator('text=All done for now').count() > 0
+    has_sections  = (
+        page.locator('text=Recommended Today').count() > 0 or
+        page.locator('text=Apply This Week').count() > 0 or
+        page.locator('text=Low Priority').count() > 0
+    )
+
+    if queue_empty or all_done:
+        chk(True, 'Application Queue shows appropriate empty state')
+        probe(f'Queue state: {"empty (no New jobs)" if queue_empty else "all actioned this session"}')
+    elif has_sections:
+        chk(True, 'At least one queue section (Today / This Week / Low Priority) rendered')
+
+        # Count badges visible on section headers
+        chk(page.locator('text=Recommended Today').count() > 0 or
+            page.locator('text=Apply This Week').count() > 0,
+            'Today or This Week bucket label visible')
+
+        # Each visible item has a score badge (number inside rounded square)
+        score_badges = page.evaluate("""() => {
+            return document.querySelectorAll(
+                '[class*="rounded-xl"][class*="flex"][class*="items-center"][class*="justify-center"] span'
+            ).length;
+        }""")
+        chk(score_badges > 0, f'Score badges visible on queue items ({score_badges} found)')
+
+        # Reason pills present (positive or negative)
+        reason_pills = page.evaluate("""() => {
+            return document.querySelectorAll('[class*="rounded-full"][class*="border"]').length;
+        }""")
+        chk(reason_pills > 0, f'WHY reason pills present ({reason_pills} found)')
+
+        # Apply button present if job has apply link (data-dependent)
+        apply_btns = page.locator('button:has-text("Apply"), a:has-text("Apply")').count()
+        if apply_btns > 0:
+            chk(True, f'Apply buttons present ({apply_btns})')
+        else:
+            probe('No Apply buttons visible — jobs may not have apply links in Airtable')
+
+        # Skip (X) button present
+        skip_btns = page.locator('button[aria-label="Skip"]').count()
+        chk(skip_btns > 0, f'Skip buttons present ({skip_btns})')
+
+        # Probe: skip optimistically removes a card
+        if skip_btns > 0:
+            cards_before = page.locator('[class*="bg-\\[#0d0d14\\]"][class*="rounded-xl"]').count()
+            page.locator('button[aria-label="Skip"]').first.click()
+            page.wait_for_timeout(400)
+            cards_after = page.locator('[class*="bg-\\[#0d0d14\\]"][class*="rounded-xl"]').count()
+            probe(f'After skip: cards {cards_before} → {cards_after} (optimistic removal)')
+    else:
+        probe('Queue page rendered but no sections or empty state detected — data may be empty')
+
+    # Sidebar nav entry present
+    sidebar_queue = page.locator('nav a[href="/queue"]').count() > 0
+    chk(sidebar_queue, 'Sidebar contains App Queue nav link')
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────

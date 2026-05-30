@@ -6,16 +6,18 @@ import { useState } from 'react'
 import {
   LayoutDashboard, GitBranch, Briefcase, Sparkles,
   FileText, BarChart2, Zap, Settings, HelpCircle, Menu, X, Bot, LogOut,
+  Target,
 } from 'lucide-react'
 
 const NAV_MAIN = [
   { href: '/',              label: 'Dashboard',     icon: LayoutDashboard },
-  { href: '/pipeline',      label: 'Pipeline',      icon: GitBranch },
-  { href: '/jobs',          label: 'Jobs',          icon: Briefcase },
-  { href: '/insights',      label: 'AI Insights',   icon: Sparkles },
-  { href: '/cover-letters', label: 'Cover Letters', icon: FileText },
-  { href: '/analytics',     label: 'Analytics',     icon: BarChart2 },
-  { href: '/automation',    label: 'Automation',    icon: Zap },
+  { href: '/queue',         label: 'App Queue',     icon: Target          },
+  { href: '/pipeline',      label: 'Pipeline',      icon: GitBranch       },
+  { href: '/jobs',          label: 'Jobs',          icon: Briefcase       },
+  { href: '/insights',      label: 'AI Insights',   icon: Sparkles        },
+  { href: '/cover-letters', label: 'Cover Letters', icon: FileText        },
+  { href: '/analytics',     label: 'Analytics',     icon: BarChart2       },
+  { href: '/automation',    label: 'Automation',    icon: Zap             },
 ]
 
 const NAV_BOTTOM = [
