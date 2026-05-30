@@ -3119,6 +3119,69 @@ with sync_playwright() as pw:
         warn('Could not open a job detail panel — skipping 6D panel assertions')
         probe('Jobs page loaded but no detail panel opened; probability checks skipped')
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 6E — Resume ROI Scoring
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    sec('Phase 6E · Resume ROI Scoring')
+
+    # Reopen a job detail if the panel isn't already open
+    panel_still_open = page.locator('text=Resume ROI').count() > 0
+    if not panel_still_open:
+        page.goto(f'{BASE}/jobs', wait_until='networkidle')
+        page.wait_for_timeout(800)
+        try:
+            page.locator('[class*="cursor-pointer"]').first.click(timeout=4000)
+            page.wait_for_timeout(800)
+        except Exception:
+            pass
+
+    panel_open_now = (
+        page.locator('text=AI Match Intelligence').count() > 0 or
+        page.locator('text=Tracking Details').count() > 0
+    )
+
+    if panel_open_now:
+        # Resume ROI section must be present
+        chk(
+            page.locator('text=Resume ROI').count() > 0,
+            'Resume ROI section present in JobDetailPanel'
+        )
+
+        # Tier badge: High ROI, Medium ROI, or Low ROI
+        tier_present = (
+            page.locator('text=High ROI').count() > 0 or
+            page.locator('text=Medium ROI').count() > 0 or
+            page.locator('text=Low ROI').count() > 0
+        )
+        chk(tier_present, 'Resume ROI tier badge (High/Medium/Low ROI) present')
+
+        # Expand the section
+        roi_btn = page.locator('button:has-text("Resume ROI")')
+        if roi_btn.count() > 0:
+            roi_btn.first.click()
+            page.wait_for_timeout(400)
+
+            # Reason text present
+            chk(
+                page.locator('text=Score:').count() > 0,
+                'Resume ROI expanded — Score stat visible'
+            )
+            chk(
+                page.locator('text=Gaps:').count() > 0,
+                'Resume ROI expanded — Gaps stat visible'
+            )
+
+            # Suggested changes only shown if there are gaps
+            has_suggested = page.locator('text=Suggested Changes').count() > 0
+            probe(f'Resume ROI Suggested Changes section: {"present" if has_suggested else "absent (no gaps — correct)"}')
+        else:
+            probe('Resume ROI toggle button not found by text — section may already be open')
+
+    else:
+        warn('Could not open job detail panel — skipping 6E assertions')
+        probe('Jobs page loaded but panel could not be opened for ROI checks')
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────
