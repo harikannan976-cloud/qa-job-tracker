@@ -3182,6 +3182,135 @@ with sync_playwright() as pw:
         warn('Could not open job detail panel — skipping 6E assertions')
         probe('Jobs page loaded but panel could not be opened for ROI checks')
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 6F — Follow-Up Message Generator in JobDetailPanel
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    sec('Phase 6F · Follow-Up Message Generator (JobDetailPanel)')
+
+    # Navigate to jobs and find an Applied/Interviewing/Offer job, or mark one
+    page.goto(f'{BASE}/jobs', wait_until='networkidle')
+    page.wait_for_timeout(800)
+
+    followup_btn_found = False
+
+    # Try clicking job cards until we find one with the Follow-Up button
+    cards = page.locator('[class*="cursor-pointer"]').all()
+    for card in cards[:6]:
+        try:
+            card.click(timeout=2000)
+            page.wait_for_timeout(500)
+            if page.locator('button:has-text("Generate Follow-Up Message")').count() > 0:
+                followup_btn_found = True
+                break
+            # Close panel and try next
+            close_btn = page.locator('button[aria-label="Close job detail panel"]')
+            if close_btn.count() > 0:
+                close_btn.click()
+                page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+    if not followup_btn_found:
+        # Mark the first job as Applied via the status buttons, then check
+        page.goto(f'{BASE}/jobs', wait_until='networkidle')
+        page.wait_for_timeout(800)
+        try:
+            page.locator('[class*="cursor-pointer"]').first.click(timeout=3000)
+            page.wait_for_timeout(500)
+            applied_btn = page.locator('button:has-text("Applied")').first
+            if applied_btn.count() > 0:
+                applied_btn.click()
+                page.wait_for_timeout(600)
+                if page.locator('button:has-text("Generate Follow-Up Message")').count() > 0:
+                    followup_btn_found = True
+        except Exception:
+            pass
+
+    chk(followup_btn_found,
+        'Generate Follow-Up Message button present for Applied/Interviewing/Offer job')
+
+    if followup_btn_found:
+        # Open the modal
+        page.locator('button:has-text("Generate Follow-Up Message")').first.click()
+        page.wait_for_timeout(500)
+
+        # Modal must appear
+        chk(
+            page.locator('[role="dialog"]').count() > 0,
+            'Follow-Up Message modal opens'
+        )
+
+        # Message type tabs present
+        chk(
+            page.locator('text=Initial Follow-Up').count() > 0,
+            'Modal shows "Initial Follow-Up" tab'
+        )
+        chk(
+            page.locator('text=Post-Interview').count() > 0,
+            'Modal shows "Post-Interview" tab'
+        )
+
+        # Subject line present
+        chk(
+            page.locator('text=Subject:').count() > 0,
+            'Subject line rendered in modal'
+        )
+
+        # Message body present (monospace area)
+        chk(
+            page.locator('text=Best regards').count() > 0 or
+            page.locator('text=Thank you').count() > 0,
+            'Message body rendered with expected content'
+        )
+
+        # Copy button present
+        chk(
+            page.locator('button:has-text("Copy Message")').count() > 0,
+            '"Copy Message" button present in modal'
+        )
+
+        # Switch to Post-Interview tab
+        try:
+            page.locator('button:has-text("Post-Interview")').first.click()
+            page.wait_for_timeout(300)
+            probe(f'Switched to Post-Interview tab — "Thank you" in body: '
+                  f'{page.locator("text=Thank you").count() > 0}')
+        except Exception:
+            probe('Could not switch modal tab — tab click failed')
+
+        # Close with Escape
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(300)
+        chk(
+            page.locator('[role="dialog"][aria-labelledby="msg-modal-title"]').count() == 0,
+            'Modal closes on Escape key'
+        )
+
+    else:
+        warn('No Applied/Interviewing/Offer job found — skipping 6F modal assertions')
+        probe('Could not find or create a trackable job for follow-up generator test')
+
+    # New jobs must NOT show the button
+    page.goto(f'{BASE}/jobs', wait_until='networkidle')
+    page.wait_for_timeout(800)
+    try:
+        page.locator('[class*="cursor-pointer"]').first.click(timeout=3000)
+        page.wait_for_timeout(500)
+        status_text = page.locator('[aria-label="Close job detail panel"]').count()
+        if status_text > 0:
+            # Check if this job is New status and button absent
+            new_badge = page.locator('button.scale-\\[1\\.05\\]:has-text("New")').count() > 0
+            if new_badge:
+                chk(
+                    page.locator('button:has-text("Generate Follow-Up Message")').count() == 0,
+                    'Generate Follow-Up Message button absent for New status job'
+                )
+            else:
+                probe('First job not in New status — skipping button-absent check')
+    except Exception:
+        probe('Could not reopen panel to check New status button absence')
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { ExternalLink, Copy, Check, FileText, X, ChevronDown, ChevronUp, Loader2, TrendingUp } from 'lucide-react'
+import { ExternalLink, Copy, Check, FileText, X, ChevronDown, ChevronUp, Loader2, TrendingUp, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
 import { logActivity, getActivity, activityLabel, timeAgo, ActivityEntry } from '@/lib/activity'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import CoverLetterModal from './CoverLetterModal'
+import FollowUpMessageModal from './FollowUpMessageModal'
 import MatchIntelligencePanel from './MatchIntelligencePanel'
 import { loadPreferences } from '@/lib/preferences'
 import { deriveResumeROI, type ROITier } from '@/lib/actionEngine'
@@ -131,6 +132,7 @@ interface Props {
 
 export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) {
   const [showCoverLetter,     setShowCoverLetter]     = useState(false)
+  const [showFollowUpModal,   setShowFollowUpModal]   = useState(false)
   const [copiedCL,            setCopiedCL]            = useState(false)
   const [showTimeline,        setShowTimeline]        = useState(false)
   const [jobActivity,         setJobActivity]         = useState<ActivityEntry[]>([])
@@ -414,6 +416,20 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
             )}
           </section>
 
+          {/* Follow-up message generator — visible once applied/interviewing/offer */}
+          {(job.status === 'Applied' || job.status === 'Interviewing' || job.status === 'Offer') && (
+            <section>
+              <button
+                type="button"
+                onClick={() => setShowFollowUpModal(true)}
+                className="w-full flex items-center justify-center gap-2 bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] hover:border-[#3a3a4e] text-zinc-400 hover:text-zinc-200 py-2 rounded-xl text-[12px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Generate Follow-Up Message
+              </button>
+            </section>
+          )}
+
           {/* Tracking Details */}
           <section>
             <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-3">Tracking Details</h3>
@@ -564,6 +580,13 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
           coverLetterText={job.cover_letter_text || undefined}
           onClose={() => setShowCoverLetter(false)}
           onCopied={() => logActivity({ type: 'cover_letter_copied', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })}
+        />
+      )}
+
+      {showFollowUpModal && (
+        <FollowUpMessageModal
+          job={job}
+          onClose={() => setShowFollowUpModal(false)}
         />
       )}
     </>
