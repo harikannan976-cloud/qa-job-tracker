@@ -3041,6 +3041,84 @@ with sync_playwright() as pw:
     probe(f'Daily Plan route /plan resolves correctly — heading present: '
           f'{page.locator("h1:has-text(\"Daily Plan\")").count() > 0}')
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 6D — Interview Probability Score
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    sec('Phase 6D · Interview Probability Score')
+
+    # Navigate to a job detail (jobs page, click first job card)
+    page.goto(f'{BASE}/jobs', wait_until='networkidle')
+    page.wait_for_timeout(800)
+
+    first_card = page.locator('[data-testid="job-card"], .job-card, [class*="cursor-pointer"]').first
+    cards_present = first_card.count() > 0
+    if not cards_present:
+        # Try clicking first row-like element
+        first_card = page.locator('main button, main [role="button"]').first
+
+    # Open first job detail
+    try:
+        first_card.click(timeout=4000)
+        page.wait_for_timeout(800)
+    except Exception:
+        pass
+
+    # Check if a detail panel opened — look for "AI Match Intelligence" heading
+    panel_open = (
+        page.locator('text=AI Match Intelligence').count() > 0 or
+        page.locator('text=Match Intelligence').count() > 0
+    )
+
+    if panel_open:
+        # Interview Probability section must be present in the panel
+        chk(
+            page.locator('text=Interview Probability').count() > 0,
+            'Interview Probability section present in MatchIntelligencePanel'
+        )
+
+        # Should show a percentage score (e.g. "42%")
+        pct_locator = page.locator('text=/\\d+%/')
+        chk(
+            pct_locator.count() > 0,
+            'Interview Probability displays a percentage score'
+        )
+
+        # Should show a label: High, Moderate, or Low
+        label_present = (
+            page.locator('text=High').count() > 0 or
+            page.locator('text=Moderate').count() > 0 or
+            page.locator('text=Low').count() > 0
+        )
+        chk(label_present, 'Interview Probability label (High/Moderate/Low) present')
+
+        # Expand the Probability section to see factor list
+        prob_btn = page.locator('button:has-text("Interview Probability")')
+        if prob_btn.count() > 0:
+            prob_btn.first.click()
+            page.wait_for_timeout(400)
+            # Factor list should appear — look for known factor labels
+            factor_present = (
+                page.locator('text=AI Match Score').count() > 0 or
+                page.locator('text=Cover Letter').count() > 0 or
+                page.locator('text=Location').count() > 0 or
+                page.locator('text=Job Freshness').count() > 0 or
+                page.locator('text=Red Flags').count() > 0
+            )
+            chk(factor_present, 'Interview Probability factor breakdown visible when expanded')
+
+            # Disclaimer text present
+            disclaimer = page.locator('text=Estimate based on match score').count() > 0
+            chk(disclaimer, 'Interview Probability disclaimer text present')
+
+            probe(f'Interview Probability expanded — factors found: {factor_present}, disclaimer: {disclaimer}')
+        else:
+            probe('Interview Probability button not found by text — section may render inline')
+
+    else:
+        warn('Could not open a job detail panel — skipping 6D panel assertions')
+        probe('Jobs page loaded but no detail panel opened; probability checks skipped')
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────

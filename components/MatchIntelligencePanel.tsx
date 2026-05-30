@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, X, ChevronDown, ChevronUp, AlertTriangle, BookOpen, FileText, Brain } from 'lucide-react'
+import { Check, X, ChevronDown, ChevronUp, AlertTriangle, BookOpen, FileText, Brain, TrendingUp } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import { deriveMatchAnalysis, ConfidenceBand, GapPriority } from '@/lib/matchAnalysis'
+import { deriveInterviewProbability, type InterviewProbability } from '@/lib/actionEngine'
+import { loadPreferences } from '@/lib/preferences'
 
 // ─── Style maps ───────────────────────────────────────────────────────────────
 
@@ -17,6 +19,78 @@ const GAP_STYLE: Record<GapPriority, string> = {
   High:          'text-red-400 bg-red-500/[0.06] border-red-500/20',
   Medium:        'text-amber-400 bg-amber-500/[0.06] border-amber-500/20',
   Uncategorized: 'text-zinc-500 bg-zinc-800/40 border-zinc-700/30',
+}
+
+type ProbLabel = InterviewProbability['label']
+
+const PROB_STYLE: Record<ProbLabel, { badge: string; score: string; dot: string }> = {
+  High:     { badge: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25', score: 'text-emerald-400', dot: 'bg-emerald-400' },
+  Moderate: { badge: 'text-amber-400 bg-amber-500/10 border-amber-500/25',       score: 'text-amber-400',   dot: 'bg-amber-400'   },
+  Low:      { badge: 'text-red-400 bg-red-500/10 border-red-500/25',             score: 'text-red-400',     dot: 'bg-red-400'     },
+}
+
+const IMPACT_DOT: Record<'positive' | 'negative' | 'neutral', string> = {
+  positive: 'bg-emerald-400',
+  negative: 'bg-red-400',
+  neutral:  'bg-zinc-600',
+}
+
+// ─── Interview Probability section ───────────────────────────────────────────
+
+function ProbabilitySection({
+  prob,
+  open,
+  onToggle,
+}: {
+  prob:     InterviewProbability
+  open:     boolean
+  onToggle: () => void
+}) {
+  const ps = PROB_STYLE[prob.label]
+
+  return (
+    <div className="border border-[#1f1f2e] rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#0f0f18] transition-colors focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-indigo-500/40 text-left"
+      >
+        <div className="flex items-center gap-2.5">
+          <TrendingUp className="w-3.5 h-3.5 text-blue-400/60" />
+          <span className="text-[12px] font-semibold text-zinc-300">Interview Probability</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-[14px] font-bold tabular-nums leading-none ${ps.score}`}>
+            {prob.score}%
+          </span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ps.badge}`}>
+            {prob.label}
+          </span>
+          {open
+            ? <ChevronUp   className="w-3.5 h-3.5 text-zinc-600 flex-shrink-0" />
+            : <ChevronDown className="w-3.5 h-3.5 text-zinc-600 flex-shrink-0" />
+          }
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t border-[#1f1f2e] px-4 pb-4 pt-3 space-y-2">
+          {prob.factors.map((f, i) => (
+            <div key={i} className="flex items-center gap-2.5">
+              <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${IMPACT_DOT[f.impact]}`} />
+              <span className="text-[12px] text-zinc-400 font-medium min-w-[120px]">{f.label}</span>
+              <span className="text-[12px] text-zinc-600">{f.value}</span>
+            </div>
+          ))}
+          <p className="text-[10px] text-zinc-700 leading-relaxed pt-1 border-t border-[#1a1a26]">
+            Estimate based on match score, cover letter, location, job freshness, and red flags.
+            Not a statistical prediction.
+          </p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── Collapsible sub-section ──────────────────────────────────────────────────
@@ -74,13 +148,17 @@ interface Props { job: Job }
 
 export default function MatchIntelligencePanel({ job }: Props) {
   // Match Summary open by default; all others collapsed
-  const [showSummary,    setShowSummary]    = useState(true)
-  const [showGaps,       setShowGaps]       = useState(false)
-  const [showInterview,  setShowInterview]  = useState(false)
-  const [showAlignment,  setShowAlignment]  = useState(false)
-  const [showConfidence, setShowConfidence] = useState(false)
+  const [showSummary,     setShowSummary]     = useState(true)
+  const [showGaps,        setShowGaps]        = useState(false)
+  const [showInterview,   setShowInterview]   = useState(false)
+  const [showAlignment,   setShowAlignment]   = useState(false)
+  const [showConfidence,  setShowConfidence]  = useState(false)
+  const [showProbability, setShowProbability] = useState(false)
+
+  const [prefs] = useState(() => loadPreferences())
 
   const a          = deriveMatchAnalysis(job)
+  const prob       = deriveInterviewProbability(job, prefs)
   const confStyle  = CONF_STYLE[a.confidence]
   const hasGaps    = a.gaps.length > 0
   const hasTopics  = a.interviewTopics.length > 0
@@ -119,6 +197,13 @@ export default function MatchIntelligencePanel({ job }: Props) {
           {a.confidence} Confidence
         </span>
       </div>
+
+      {/* ── 6-D — Interview Probability (default: collapsed) ───────────── */}
+      <ProbabilitySection
+        prob={prob}
+        open={showProbability}
+        onToggle={() => setShowProbability(p => !p)}
+      />
 
       {/* ── 4A + partial 4C — Match Summary (default: open) ─────────────── */}
       <SubSection
