@@ -2357,14 +2357,9 @@ with sync_playwright() as pw:
     # ── 5A-A: Date range control on automation page ───────────────────────────
     sec('Phase 5A-A · Date Range Control')
 
-    # Block the n8n webhook so "Run Workflow Now" clicks in this section
-    # never reach the real workflow, even if React state has a timing edge case.
-    def _block_n8n(route):
-        if 'webhook' in route.request.url or 'n8n' in route.request.url:
-            route.fulfill(status=200, body='{"blocked_by_test":true}')
-        else:
-            route.continue_()
-    page.route('**/*', _block_n8n)
+    # Block the n8n webhook so "Run Workflow Now" clicks never reach the real
+    # workflow, even if React state settles after the click fires.
+    page.route('http://localhost:5678/**', lambda r: r.fulfill(status=200, body='{}'))
 
     page.goto(f'{BASE}/automation', wait_until='networkidle')
     page.wait_for_timeout(400)
@@ -2417,7 +2412,7 @@ with sync_playwright() as pw:
     page.wait_for_timeout(200)
 
     # Remove the webhook block — subsequent tests don't trigger the workflow
-    page.unroute('**/*', _block_n8n)
+    page.unroute('http://localhost:5678/**')
 
     # ── 5A-B: Run visibility — status cards and status pill ───────────────────
     sec('Phase 5A-B · Run Visibility')
