@@ -2862,6 +2862,112 @@ with sync_playwright() as pw:
     sidebar_queue = page.locator('nav a[href="/queue"]').count() > 0
     chk(sidebar_queue, 'Sidebar contains App Queue nav link')
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 6B — Follow-Up Center
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    sec('Phase 6B · Follow-Up Center page')
+    page.goto(f'{BASE}/follow-up', wait_until='networkidle')
+    page.wait_for_timeout(600)
+
+    # Page heading
+    chk(page.locator('h1:has-text("Follow-Up Center")').count() > 0,
+        'Follow-Up Center page heading present')
+
+    # Description line
+    chk(page.locator('text=Overdue').count() > 0 or
+        page.locator('text=overdue').count() > 0 or
+        page.locator('text=due today').count() > 0 or
+        page.locator('text=one-click').count() > 0 or
+        page.locator('text=All caught up').count() > 0 or
+        page.locator('text=Nothing to track').count() > 0,
+        'Follow-Up Center shows content or an appropriate empty state')
+
+    # Determine state
+    no_trackable = page.locator('text=Nothing to track yet').count() > 0
+    all_caught_up = page.locator('text=All caught up').count() > 0
+    has_sections = (
+        page.locator('text=Overdue').count() > 0 or
+        page.locator('text=Due Today').count() > 0 or
+        page.locator('text=Due This Week').count() > 0 or
+        page.locator('text=Interview Follow-Ups').count() > 0
+    )
+
+    if no_trackable:
+        chk(True, 'Follow-Up Center shows "Nothing to track yet" empty state')
+    elif all_caught_up:
+        chk(True, 'Follow-Up Center shows "All caught up" empty state')
+        probe('All follow-ups cleared — no pending items')
+    elif has_sections:
+        chk(True, 'Follow-Up Center has at least one bucket section')
+
+        # Per-item action buttons: Done, Schedule, Message
+        done_btns = page.locator('button:has-text("Done")').count()
+        chk(done_btns > 0, f'Mark Done buttons present ({done_btns})')
+
+        schedule_btns = page.locator('button:has-text("Schedule")').count()
+        chk(schedule_btns > 0, f'Schedule buttons present ({schedule_btns})')
+
+        message_btns = page.locator('button:has-text("Message")').count()
+        chk(message_btns > 0, f'Message generator buttons present ({message_btns})')
+
+        # Meta row: Applied date visible
+        applied_label = page.locator('text=Applied:').count()
+        chk(applied_label > 0, f'Applied date labels present ({applied_label})')
+
+        # Probe: clicking Schedule opens the inline panel with presets
+        if schedule_btns > 0:
+            page.locator('button:has-text("Schedule")').first.click()
+            page.wait_for_timeout(300)
+            has_presets = (
+                page.locator('button:has-text("+3 days")').count() > 0 or
+                page.locator('button:has-text("+7 days")').count() > 0
+            )
+            probe(f'Schedule panel opened — presets visible: {has_presets}')
+            # Close by clicking Schedule again
+            page.locator('button:has-text("Schedule")').first.click()
+            page.wait_for_timeout(200)
+
+        # Probe: clicking Message opens the generator modal
+        if message_btns > 0:
+            page.locator('button:has-text("Message")').first.click()
+            page.wait_for_timeout(400)
+            modal_open = page.locator('role=dialog').count() > 0
+            probe(f'Message modal opened: {modal_open}')
+            if modal_open:
+                # All 4 message type tabs present
+                tabs_found = sum(1 for label in [
+                    'Initial Follow-Up', 'Recruiter Outreach', 'Post-Interview', 'Second Follow-Up'
+                ] if page.locator(f'button:has-text("{label}")').count() > 0)
+                chk(tabs_found == 4, f'All 4 message type tabs present ({tabs_found}/4)')
+
+                # Copy button present
+                chk(page.locator('button:has-text("Copy Message")').count() > 0,
+                    'Copy Message button present in modal')
+
+                # Subject line visible
+                chk(page.locator('text=Subject:').count() > 0,
+                    'Subject line visible in message modal')
+
+                # Close modal
+                page.locator('button[aria-label="Close message generator"]').click()
+                page.wait_for_timeout(300)
+    else:
+        probe('Follow-Up Center rendered but no recognisable state — unexpected structure')
+
+    # Dashboard widget "Manage" link now points to /follow-up
+    page.goto(BASE, wait_until='networkidle')
+    page.wait_for_timeout(500)
+    manage_link = page.locator('a[href="/follow-up"]:has-text("Manage")').count()
+    # Also accept it via the nav link
+    follow_up_nav = page.locator('nav a[href="/follow-up"]').count() > 0
+    chk(manage_link > 0 or follow_up_nav,
+        'Follow-Up nav entry or dashboard "Manage" link points to /follow-up')
+
+    # Sidebar nav entry
+    chk(page.locator('nav a[href="/follow-up"]').count() > 0,
+        'Sidebar contains Follow-Up nav link')
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────

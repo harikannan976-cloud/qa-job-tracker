@@ -65,7 +65,7 @@ export default function FollowUpCenter({ jobs }: Props) {
           </p>
         </div>
         <Link
-          href="/jobs"
+          href="/follow-up"
           className="flex items-center gap-1 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded"
         >
           Manage <ChevronRight className="w-3 h-3" />
