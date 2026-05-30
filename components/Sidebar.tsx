@@ -6,11 +6,12 @@ import { useState } from 'react'
 import {
   LayoutDashboard, GitBranch, Briefcase, Sparkles,
   FileText, BarChart2, Zap, Settings, HelpCircle, Menu, X, Bot, LogOut,
-  Target, CalendarClock,
+  Target, CalendarClock, ClipboardList,
 } from 'lucide-react'
 
 const NAV_MAIN = [
   { href: '/',              label: 'Dashboard',     icon: LayoutDashboard },
+  { href: '/plan',          label: 'Daily Plan',    icon: ClipboardList   },
   { href: '/queue',         label: 'App Queue',     icon: Target          },
   { href: '/follow-up',     label: 'Follow-Up',     icon: CalendarClock   },
   { href: '/pipeline',      label: 'Pipeline',      icon: GitBranch       },

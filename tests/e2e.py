@@ -2968,6 +2968,79 @@ with sync_playwright() as pw:
     chk(page.locator('nav a[href="/follow-up"]').count() > 0,
         'Sidebar contains Follow-Up nav link')
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 6C — Daily Command Center
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    sec('Phase 6C · Daily Plan page')
+    page.goto(f'{BASE}/plan', wait_until='networkidle')
+    page.wait_for_timeout(600)
+
+    # Page heading
+    chk(page.locator('h1:has-text("Daily Plan")').count() > 0,
+        'Daily Plan page heading present')
+
+    # Sub-heading
+    chk(page.locator('text=Action Plan').count() > 0 or
+        page.locator('text=Everything you should do today').count() > 0,
+        'Daily Plan sub-heading or description present')
+
+    # Hero card always present (either the summary or "All clear" state)
+    hero_all_clear = page.locator("text=All clear for today").count() > 0
+    hero_summary   = page.locator("text=Today's Plan").count() > 0
+    chk(hero_all_clear or hero_summary,
+        "Hero card rendered (Today's Plan or All clear state)")
+
+    if hero_summary:
+        # All four stat labels present in the hero card
+        stat_labels = ['Apply', 'Follow-Up', 'Cover Letters', 'Interview Prep']
+        for label in stat_labels:
+            chk(page.locator(f'text={label}').count() > 0,
+                f'Hero stat label "{label}" present')
+
+        # Effort estimate visible
+        effort_present = (
+            page.locator('text=min').count() > 0 or
+            page.locator('text=~').count() > 0 or
+            page.locator('text=0 min').count() > 0
+        )
+        chk(effort_present, 'Effort estimate present in hero card')
+
+        # If any section rendered, check for "Apply Today" or other section labels
+        any_section = (
+            page.locator('text=Apply Today').count() > 0 or
+            page.locator('text=Follow-Ups Due').count() > 0 or
+            page.locator('text=Cover Letters Needed').count() > 0 or
+            page.locator('text=Interview Prep').count() > 0
+        )
+        if any_section:
+            chk(True, 'At least one action section rendered under hero card')
+
+            # Sections link to correct destinations
+            queue_link     = page.locator('a[href="/queue"]').count() > 0
+            followup_link  = page.locator('a[href="/follow-up"]').count() > 0
+            pipeline_link  = page.locator('a[href="/pipeline"]').count() > 0
+            cl_link        = page.locator('a[href="/cover-letters"]').count() > 0
+            chk(queue_link or followup_link or pipeline_link or cl_link,
+                'Section "see all" links present (queue/follow-up/pipeline/cover-letters)')
+
+            # Apply buttons present if Apply Today section is visible
+            if page.locator('text=Apply Today').count() > 0:
+                apply_btns = page.locator('button:has-text("Apply")').count()
+                probe(f'Apply Today section visible — Apply buttons: {apply_btns}')
+        else:
+            probe('Hero summary shows but all section counts are 0 — data state clean')
+    else:
+        chk(True, 'Daily Plan shows "All clear" state — no tasks today')
+
+    # Sidebar nav entry
+    chk(page.locator('nav a[href="/plan"]').count() > 0,
+        'Sidebar contains Daily Plan nav link')
+
+    # Probe: daily plan accessible directly from the sidebar
+    probe(f'Daily Plan route /plan resolves correctly — heading present: '
+          f'{page.locator("h1:has-text(\"Daily Plan\")").count() > 0}')
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────
