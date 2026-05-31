@@ -44,7 +44,7 @@ export default function ActivityFeed({ limit = 20 }: { limit?: number }) {
   }
 
   return (
-    <div className="overflow-y-auto max-h-[420px] space-y-0.5 pr-0.5
+    <div className="overflow-y-auto flex-1 space-y-0.5 pr-0.5
                     [&::-webkit-scrollbar]:w-1
                     [&::-webkit-scrollbar-track]:bg-transparent
                     [&::-webkit-scrollbar-thumb]:bg-[#2a2a3a]

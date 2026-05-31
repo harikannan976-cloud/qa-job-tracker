@@ -128,9 +128,9 @@ async function DashboardContent() {
         </div>
 
         {/* Right: Activity feed */}
-        <div className="hidden xl:block w-[240px] flex-shrink-0">
-          <div className="sticky top-6 bg-[#0d0d14] border border-[#1a1a26] rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-4">
+        <div className="hidden xl:flex xl:flex-col w-[240px] flex-shrink-0">
+          <div className="sticky top-6 flex flex-col bg-[#0d0d14] border border-[#1a1a26] rounded-xl p-4 max-h-[calc(100vh-3rem)]">
+            <div className="flex items-center gap-2 mb-4 flex-shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
               <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-widest">
                 Recent Activity
