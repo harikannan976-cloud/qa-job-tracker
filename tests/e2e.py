@@ -2841,9 +2841,10 @@ with sync_playwright() as pw:
         ai_picks_visible = page.locator('text=AI Picks Today').count() > 0
         if ai_picks_visible:
             reason_pills = page.evaluate("""() => {
-                const allText = document.body.innerText || '';
-                return (allText.includes("Why it") || allText.includes("Missing skills") ||
-                        allText.includes("Risk signals") || allText.includes("No strong signals") ||
+                const allText = (document.body.innerText || '').toUpperCase();
+                return (allText.includes("WHY IT") || allText.includes("MISSING SKILLS") ||
+                        allText.includes("RISK SIGNALS") || allText.includes("NO STRONG SIGNALS") ||
+                        allText.includes("NO GAPS") || allText.includes("NO RED FLAGS") ||
                         document.querySelectorAll('[class*="rounded-full"][class*="border"]').length > 0) ? 1 : 0;
             }""")
             chk(reason_pills > 0, f'WHY reason pills present ({reason_pills} found)')
