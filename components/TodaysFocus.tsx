@@ -57,7 +57,7 @@ function ActionRow({ item }: { item: ActionItem }) {
 
   return (
     <Link
-      href={`/jobs/${item.job.id}`}
+      href={`/jobs/${item.job.id}?from=dashboard`}
       className="flex items-start gap-3 py-2.5 hover:bg-[#161620] -mx-4 px-4 transition-colors group"
     >
       <div className={`flex-shrink-0 mt-0.5 w-7 h-7 rounded-lg border flex items-center justify-center ${iconCls}`}>

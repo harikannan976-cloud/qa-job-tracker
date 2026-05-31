@@ -52,7 +52,7 @@ export default function ActivityFeed({ limit = 20 }: { limit?: number }) {
       {entries.map(e => (
         <Link
           key={e.id}
-          href={`/jobs/${e.jobId}`}
+          href={`/jobs/${e.jobId}?from=dashboard`}
           className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-[#111118] transition-colors group"
         >
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-px ${DOT[e.type] ?? 'bg-zinc-600'}`} />

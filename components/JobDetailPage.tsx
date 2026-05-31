@@ -46,9 +46,22 @@ function scoreBadgeStyle(score: number) {
   return 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'
 }
 
+// ─── Back-link map ────────────────────────────────────────────────────────────
+
+const FROM_MAP: Record<string, { href: string; label: string }> = {
+  dashboard:        { href: '/',              label: 'Dashboard'     },
+  plan:             { href: '/plan',          label: 'Daily Plan'    },
+  queue:            { href: '/queue',         label: 'App Queue'     },
+  'cover-letters':  { href: '/cover-letters', label: 'Cover Letters' },
+  'follow-up':      { href: '/follow-up',     label: 'Follow-Up'     },
+  pipeline:         { href: '/pipeline',      label: 'Pipeline'      },
+}
+const DEFAULT_BACK = { href: '/jobs', label: 'All Jobs' }
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function JobDetailPage({ job: initialJob }: { job: Job }) {
+export default function JobDetailPage({ job: initialJob, from }: { job: Job; from?: string }) {
+  const backLink = (from && FROM_MAP[from]) ?? DEFAULT_BACK
   const router = useRouter()
   const [job, setJob] = useState(initialJob)
 
@@ -225,17 +238,17 @@ export default function JobDetailPage({ job: initialJob }: { job: Job }) {
       {/* Breadcrumb + Prev/Next */}
       <div className="flex items-center justify-between mb-6">
         <Link
-          href="/jobs"
+          href={backLink.href}
           className="flex items-center gap-1.5 text-[13px] text-zinc-500 hover:text-zinc-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          All Jobs
+          {backLink.label}
         </Link>
 
         {navIds && (prevId || nextId) && (
           <div className="flex items-center gap-1">
             <button
-              onClick={() => prevId && router.push(`/jobs/${prevId}`)}
+              onClick={() => prevId && router.push(`/jobs/${prevId}${from ? `?from=${from}` : ''}`)}
               disabled={!prevId}
               aria-label="Previous job"
               className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] text-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed bg-[#111118] border border-[#1f1f2e] rounded-lg hover:border-[#2e2e42] transition-all"
@@ -249,7 +262,7 @@ export default function JobDetailPage({ job: initialJob }: { job: Job }) {
               </span>
             )}
             <button
-              onClick={() => nextId && router.push(`/jobs/${nextId}`)}
+              onClick={() => nextId && router.push(`/jobs/${nextId}${from ? `?from=${from}` : ''}`)}
               disabled={!nextId}
               aria-label="Next job"
               className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] text-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed bg-[#111118] border border-[#1f1f2e] rounded-lg hover:border-[#2e2e42] transition-all"

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { FileText, Copy, ExternalLink, Check } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import { logActivity } from '@/lib/activity'
@@ -71,16 +72,19 @@ export default function CoverLettersList({ jobs }: { jobs: Job[] }) {
             key={job.id}
             className="flex items-center gap-4 bg-[#111118] border border-[#1f1f2e] rounded-xl px-4 py-3.5 hover:border-[#252538] transition-colors"
           >
-            {/* Score */}
-            <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-[13px] font-bold ${scoreBadgeStyle(job.ai_score)}`}>
-              {job.ai_score}
-            </div>
-
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-zinc-200 truncate">{job.job_title}</p>
-              <p className="text-[11px] text-zinc-600 truncate">{job.employer_name}</p>
-            </div>
+            {/* Score + Info — navigates to job detail */}
+            <Link
+              href={`/jobs/${job.id}?from=cover-letters`}
+              className="flex items-center gap-4 flex-1 min-w-0 group"
+            >
+              <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-[13px] font-bold ${scoreBadgeStyle(job.ai_score)}`}>
+                {job.ai_score}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-zinc-200 group-hover:text-white truncate transition-colors">{job.job_title}</p>
+                <p className="text-[11px] text-zinc-600 truncate">{job.employer_name}</p>
+              </div>
+            </Link>
 
             {/* Status */}
             <span className={`hidden sm:inline text-[11px] px-2 py-0.5 rounded-full border flex-shrink-0 ${STATUS_STYLE[job.status]}`}>

@@ -53,7 +53,7 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
             ts:  Date.now(),
           }))
         } catch { /* sessionStorage unavailable */ }
-        router.push(`/jobs/${job.id}`)
+        router.push(`/jobs/${job.id}?from=jobs`)
       } else if (e.key === 'Escape') {
         setFocusedIdx(-1)
       }

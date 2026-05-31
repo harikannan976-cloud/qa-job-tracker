@@ -72,7 +72,7 @@ export default function JobCard({ job, navIds, onStatusChange }: Props) {
     try {
       sessionStorage.setItem('qa_job_nav', JSON.stringify({ ids: navIds, ts: Date.now() }))
     } catch { /* sessionStorage unavailable */ }
-    router.push(`/jobs/${job.id}`)
+    router.push(`/jobs/${job.id}?from=jobs`)
   }
 
   async function handleApply(e: React.MouseEvent) {

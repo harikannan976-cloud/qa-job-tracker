@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { ExternalLink, X, Target, Inbox } from 'lucide-react'
+import Link from 'next/link'
+import { X, Target, Inbox } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import { loadPreferences } from '@/lib/preferences'
 import { logActivity } from '@/lib/activity'
@@ -44,60 +45,38 @@ function ReasonPill({ text, positive }: { text: string; positive: boolean }) {
 
 // ─── Queue item card ──────────────────────────────────────────────────────────
 
-function QueueCard({
-  item,
-  onApply,
-  onSkip,
-}: {
-  item:    QueueItem
-  onApply: (job: Job) => void
-  onSkip:  (job: Job) => void
-}) {
+function QueueCard({ item, onSkip }: { item: QueueItem; onSkip: (job: Job) => void }) {
   const { job, reasons } = item
   const location = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ')
 
   return (
-    <div className="flex items-start gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-4 py-3 hover:border-[#252538] transition-colors">
-      <ScoreBadge score={job.ai_score} />
-
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold text-zinc-200 truncate">{job.job_title}</p>
-        <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-          {job.employer_name}
-          {location ? ` · ${location}` : ''}
-          {job.job_is_remote ? ' · Remote' : ''}
-        </p>
-
-        {/* WHY this job was prioritised */}
-        {reasons.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1.5">
-            {reasons.map((r, i) => (
-              <ReasonPill key={i} text={r.text} positive={r.positive} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="flex-shrink-0 flex items-center gap-1.5 mt-0.5">
-        {job.job_apply_link && (
-          <button
-            type="button"
-            onClick={() => onApply(job)}
-            className="flex items-center gap-1 text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-          >
-            <ExternalLink className="w-3 h-3" />
-            Apply
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => onSkip(job)}
-          aria-label="Skip"
-          className="flex items-center justify-center w-7 h-7 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-[#1a1a26] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
+    <div className="flex items-start gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-4 py-3 hover:border-[#252538] transition-colors group">
+      <Link href={`/jobs/${job.id}?from=queue`} className="flex items-start gap-3 flex-1 min-w-0">
+        <ScoreBadge score={job.ai_score} />
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold text-zinc-200 group-hover:text-white truncate transition-colors">{job.job_title}</p>
+          <p className="text-[11px] text-zinc-500 truncate mt-0.5">
+            {job.employer_name}
+            {location ? ` · ${location}` : ''}
+            {job.job_is_remote ? ' · Remote' : ''}
+          </p>
+          {reasons.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {reasons.map((r, i) => (
+                <ReasonPill key={i} text={r.text} positive={r.positive} />
+              ))}
+            </div>
+          )}
+        </div>
+      </Link>
+      <button
+        type="button"
+        onClick={() => onSkip(job)}
+        aria-label="Skip"
+        className="flex-shrink-0 mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-[#1a1a26] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
     </div>
   )
 }
@@ -133,20 +112,6 @@ export default function ApplicationQueue({ jobs }: Props) {
     const visible = jobs.filter(j => !removedIds.has(j.id))
     return buildApplicationQueue(visible, prefs)
   }, [jobs, removedIds, prefs])
-
-  async function handleApply(job: Job) {
-    if (!job.job_apply_link) return
-    window.open(job.job_apply_link, '_blank', 'noopener,noreferrer')
-    logActivity({ type: 'posting_opened', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-    setRemovedIds(prev => new Set(prev).add(job.id))
-    try {
-      await fetch('/api/jobs', {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ recordId: job.id, status: 'Applied' }),
-      })
-    } catch { /* optimistic removal stays */ }
-  }
 
   async function handleSkip(job: Job) {
     logActivity({ type: 'skipped', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
@@ -210,7 +175,6 @@ export default function ApplicationQueue({ jobs }: Props) {
                 <QueueCard
                   key={item.job.id}
                   item={item}
-                  onApply={handleApply}
                   onSkip={handleSkip}
                 />
               ))}

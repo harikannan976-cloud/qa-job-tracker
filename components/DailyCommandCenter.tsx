@@ -148,7 +148,7 @@ function ApplySection({ items }: { items: QueueItem[] }) {
         return (
           <Link
             key={job.id}
-            href={`/jobs/${job.id}`}
+            href={`/jobs/${job.id}?from=plan`}
             className="flex items-start gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors group"
           >
             <div className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-[12px] font-bold ${scoreBadgeCls(job.ai_score)}`}>
@@ -190,7 +190,7 @@ function FollowUpSection({ jobs }: { jobs: Job[] }) {
         return (
           <Link
             key={job.id}
-            href={`/jobs/${job.id}`}
+            href={`/jobs/${job.id}?from=plan`}
             className="flex items-center gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors group"
           >
             <div className="flex-1 min-w-0">
