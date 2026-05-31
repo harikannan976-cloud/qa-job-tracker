@@ -76,6 +76,7 @@ export default function App() {
       setTabId(null)
       setFillState('idle')
       setFillResult(null)
+      setError('')   // clear any lingering error from a failed autofill attempt
       setAppState('not-connected')
     })
   }
@@ -137,8 +138,10 @@ export default function App() {
     window.close()
   }
 
-  // Is the current page a dashboard page? (don't offer autofill there)
-  const isOwnPage = pageUrl.startsWith(DASHBOARD)
+  // Only offer autofill on regular http/https pages — not on extension pages,
+  // new-tab pages, chrome:// URLs, or the dashboard itself.
+  const isScriptablePage = pageUrl.startsWith('http://') || pageUrl.startsWith('https://')
+  const isOwnPage        = pageUrl.startsWith(DASHBOARD)
 
   return (
     <div>
@@ -224,7 +227,7 @@ export default function App() {
             )}
 
             {/* Autofill button — only shown on non-dashboard pages */}
-            {!isOwnPage && tabId && fillState !== 'done' && (
+            {isScriptablePage && !isOwnPage && tabId && fillState !== 'done' && (
               <button
                 className="btn btn-primary"
                 onClick={handleAutofill}
