@@ -25,6 +25,8 @@ export interface Job {
   applied_date: string
   follow_up_date: string
   recruiter_contact: string
+  apply_assistant_status: 'Not Started' | 'Opened' | 'Autofilled' | 'Ready for Review' | 'Applied Manually' | ''
+  resume_used: string
 }
 
 const BASE_URL = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${process.env.AIRTABLE_TABLE_NAME}`
@@ -72,11 +74,13 @@ export async function fetchJobs(): Promise<Job[]> {
         ai_red_flags: f.ai_red_flags ?? '',
         cover_letter_url:   f.cover_letter_url ?? '',
         cover_letter_text:  f.cover_letter_text ?? '',
-        status:             f.status ?? 'New',
-        notes:              f.notes ?? '',
-        applied_date:       f.applied_date ?? '',
-        follow_up_date:     f.follow_up_date ?? '',
-        recruiter_contact:  f.recruiter_contact ?? '',
+        status:                  f.status ?? 'New',
+        notes:                   f.notes ?? '',
+        applied_date:            f.applied_date ?? '',
+        follow_up_date:          f.follow_up_date ?? '',
+        recruiter_contact:       f.recruiter_contact ?? '',
+        apply_assistant_status:  f.apply_assistant_status ?? '',
+        resume_used:             f.resume_used ?? '',
       })
     }
 
@@ -114,11 +118,13 @@ export async function fetchJobById(id: string): Promise<Job | null> {
     ai_red_flags:       f.ai_red_flags        ?? '',
     cover_letter_url:   f.cover_letter_url    ?? '',
     cover_letter_text:  f.cover_letter_text   ?? '',
-    status:             f.status              ?? 'New',
-    notes:              f.notes               ?? '',
-    applied_date:       f.applied_date        ?? '',
-    follow_up_date:     f.follow_up_date      ?? '',
-    recruiter_contact:  f.recruiter_contact   ?? '',
+    status:                  f.status                  ?? 'New',
+    notes:                   f.notes                   ?? '',
+    applied_date:            f.applied_date            ?? '',
+    follow_up_date:          f.follow_up_date          ?? '',
+    recruiter_contact:       f.recruiter_contact       ?? '',
+    apply_assistant_status:  f.apply_assistant_status  ?? '',
+    resume_used:             f.resume_used             ?? '',
   }
 }
 
@@ -143,4 +149,36 @@ export async function updateJobFields(recordId: string, fields: Record<string, u
     headers,
     body: JSON.stringify({ fields }),
   })
+}
+
+// ─── UserProfile (single-record Airtable table) ───────────────────────────────
+
+const PROFILE_TABLE_URL = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/UserProfile`
+
+export async function fetchProfileFromAirtable(): Promise<string | null> {
+  const res  = await fetch(PROFILE_TABLE_URL, { headers, cache: 'no-store' })
+  const data = await res.json()
+  const record = data.records?.[0]
+  return record?.fields?.profile_json ?? null
+}
+
+export async function upsertProfileToAirtable(profileJson: string): Promise<void> {
+  // Check if a record already exists
+  const res  = await fetch(PROFILE_TABLE_URL, { headers, cache: 'no-store' })
+  const data = await res.json()
+  const existing = data.records?.[0]
+
+  if (existing) {
+    await fetch(`${PROFILE_TABLE_URL}/${existing.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ fields: { profile_json: profileJson } }),
+    })
+  } else {
+    await fetch(PROFILE_TABLE_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ fields: { profile_json: profileJson } }),
+    })
+  }
 }

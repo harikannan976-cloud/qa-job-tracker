@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const AUTH_COOKIE = 'qa_tracker_auth'
-const PUBLIC_PATHS = ['/login', '/api/auth', '/landing']
+const PUBLIC_PATHS = ['/login', '/api/auth', '/landing', '/api/ext/']
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl

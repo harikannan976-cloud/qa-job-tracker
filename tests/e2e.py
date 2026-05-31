@@ -1708,8 +1708,8 @@ with sync_playwright() as pw:
     page.reload()
     page.wait_for_load_state('networkidle')
     page.wait_for_timeout(400)
-    # Add a new location
-    loc_input = page.locator('input[placeholder*="Toronto"]').first
+    # Add a new location — use full placeholder to avoid matching ProfileForm city field
+    loc_input = page.locator('input[placeholder*="Ottawa"]').first
     loc_input.fill('Vancouver')
     loc_input.press('Enter')
     page.wait_for_timeout(200)
@@ -3455,6 +3455,356 @@ with sync_playwright() as pw:
                 probe('First job not in New status — skipping button-absent check')
     except Exception:
         probe('Could not reopen panel to check New status button absence')
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 7 — Apply Assistant (Phase 1: API routes, Profile, Resume Vault,
+    #            Extension Token, Dashboard integration)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    import json as _json
+    EXTENSION_TOKEN = os.environ.get('EXTENSION_TOKEN', '101df55d93e8e658994d5b433552251425ce38caead4a56c7d08d4208e5b584a')
+
+    # ── Phase 7A: /api/ext/auth ─────────────────────────────────────────────
+    sec('Phase 7A · ext/auth endpoint')
+
+    import urllib.request as _urllib
+    import urllib.error as _urllib_error
+
+    def api_request(method, path, body=None, token=None, cookie=None):
+        url  = f'{BASE}{path}'
+        # Always encode body as JSON if provided (even empty dict), so server receives valid JSON
+        data = _json.dumps(body).encode() if body is not None else None
+        hdrs = {'Content-Type': 'application/json'}
+        if token:  hdrs['Authorization'] = f'Bearer {token}'
+        if cookie: hdrs['Cookie'] = cookie
+        req  = _urllib.Request(url, data=data, headers=hdrs, method=method)
+        try:
+            with _urllib.urlopen(req, timeout=10) as r:
+                raw = r.read()
+                # Handle empty body (e.g. 204 No Content from OPTIONS)
+                return r.status, (_json.loads(raw) if raw.strip() else {})
+        except _urllib_error.HTTPError as e:
+            raw = e.read()
+            return e.code, (_json.loads(raw) if raw.strip() else {})
+        except Exception as ex:
+            return 0, {'error': str(ex)}
+
+    # Valid token
+    status, body = api_request('POST', '/api/ext/auth', {'token': EXTENSION_TOKEN})
+    chk(status == 200, 'ext/auth: valid token returns 200', f'status={status}')
+    chk(body.get('ok') is True, 'ext/auth: body.ok is true', str(body))
+
+    # Wrong token
+    status, body = api_request('POST', '/api/ext/auth', {'token': 'wrong-token'})
+    chk(status == 401, 'ext/auth: invalid token returns 401', f'status={status}')
+
+    # Missing token
+    status, body = api_request('POST', '/api/ext/auth', {})
+    chk(status == 401, 'ext/auth: missing token returns 401', f'status={status}')
+
+    # OPTIONS preflight
+    status, _ = api_request('OPTIONS', '/api/ext/auth')
+    chk(status in (200, 204), 'ext/auth: OPTIONS preflight returns 200/204', f'status={status}')
+
+    # ── Phase 7B: /api/ext/profile ──────────────────────────────────────────
+    sec('Phase 7B · ext/profile endpoint')
+
+    # GET with valid token
+    status, body = api_request('GET', '/api/ext/profile', token=EXTENSION_TOKEN)
+    chk(status == 200, 'ext/profile GET: valid token returns 200', f'status={status}')
+    chk('profile' in body, 'ext/profile GET: response contains profile key', str(list(body.keys())))
+    profile_data = body.get('profile', {})
+    chk(isinstance(profile_data, dict), 'ext/profile GET: profile is a dict', str(type(profile_data)))
+
+    # Profile has expected keys
+    expected_keys = ['firstName', 'lastName', 'email', 'phone', 'city', 'linkedinUrl', 'currentTitle']
+    for key in expected_keys:
+        chk(key in profile_data, f'ext/profile GET: profile has key "{key}"')
+
+    # GET without auth
+    status, body = api_request('GET', '/api/ext/profile')
+    chk(status == 401, 'ext/profile GET: no auth returns 401', f'status={status}')
+
+    # POST profile with valid token (write a test profile, then clean up)
+    test_profile = {
+        'firstName': 'TestFirst', 'lastName': 'TestLast',
+        'email': 'test@example.com', 'phone': '555-0000',
+        'city': 'Toronto', 'province': 'Ontario', 'country': 'Canada',
+        'postalCode': 'M5V 1A1', 'linkedinUrl': '', 'githubUrl': '',
+        'portfolioUrl': '', 'currentTitle': 'QA Engineer',
+        'yearsOfExperience': 5, 'workAuthorization': 'Canadian Citizen',
+        'requiresSponsorship': False, 'expectedSalary': '$90k',
+        'noticePeriod': '2 weeks', 'summary': 'Test summary',
+    }
+    status, body = api_request('POST', '/api/ext/profile', {'profile': test_profile}, token=EXTENSION_TOKEN)
+    chk(status == 200, 'ext/profile POST: valid token write returns 200', f'status={status}')
+    chk(body.get('ok') is True, 'ext/profile POST: body.ok is true', str(body))
+
+    # Read back and verify
+    status, body = api_request('GET', '/api/ext/profile', token=EXTENSION_TOKEN)
+    saved = body.get('profile', {})
+    chk(saved.get('firstName') == 'TestFirst', 'ext/profile: written firstName reads back correctly', saved.get('firstName'))
+    chk(saved.get('email') == 'test@example.com', 'ext/profile: written email reads back correctly', saved.get('email'))
+
+    # POST without auth
+    status, body = api_request('POST', '/api/ext/profile', {'profile': test_profile})
+    chk(status == 401, 'ext/profile POST: no auth returns 401', f'status={status}')
+
+    # OPTIONS preflight
+    status, _ = api_request('OPTIONS', '/api/ext/profile')
+    chk(status in (200, 204), 'ext/profile: OPTIONS preflight returns 200/204', f'status={status}')
+
+    # ── Phase 7C: /api/ext/jobs ─────────────────────────────────────────────
+    sec('Phase 7C · ext/jobs endpoint')
+
+    # GET with valid token
+    status, body = api_request('GET', '/api/ext/jobs', token=EXTENSION_TOKEN)
+    chk(status == 200, 'ext/jobs GET: valid token returns 200', f'status={status}')
+    chk('jobs' in body, 'ext/jobs GET: response contains jobs key', str(list(body.keys())))
+    jobs_list = body.get('jobs', [])
+    chk(isinstance(jobs_list, list), 'ext/jobs GET: jobs is a list', str(type(jobs_list)))
+
+    if jobs_list:
+        first_job = jobs_list[0]
+        slim_keys = ['id', 'job_title', 'employer_name', 'job_apply_link', 'cover_letter_url', 'status', 'apply_assistant_status']
+        for key in slim_keys:
+            chk(key in first_job, f'ext/jobs GET: job has key "{key}"')
+        # Verify heavy fields are NOT exposed
+        chk('ai_reasoning' not in first_job, 'ext/jobs GET: ai_reasoning NOT in slim response (data minimisation)')
+        chk('notes' not in first_job, 'ext/jobs GET: notes NOT in slim response')
+    else:
+        probe('ext/jobs: no jobs in Airtable — slim key checks skipped')
+
+    # GET without auth
+    status, body = api_request('GET', '/api/ext/jobs')
+    chk(status == 401, 'ext/jobs GET: no auth returns 401', f'status={status}')
+
+    # OPTIONS preflight
+    status, _ = api_request('OPTIONS', '/api/ext/jobs')
+    chk(status in (200, 204), 'ext/jobs: OPTIONS preflight returns 200/204', f'status={status}')
+
+    # ── Phase 7D: /api/ext/jobs/[id] ───────────────────────────────────────
+    sec('Phase 7D · ext/jobs/[id] PATCH endpoint')
+
+    if jobs_list:
+        test_job_id = jobs_list[0]['id']
+
+        # Valid patch — apply_assistant_status
+        status, body = api_request(
+            'PATCH', f'/api/ext/jobs/{test_job_id}',
+            {'apply_assistant_status': 'Autofilled'},
+            token=EXTENSION_TOKEN
+        )
+        chk(status == 200, 'ext/jobs/[id] PATCH: valid status update returns 200', f'status={status}')
+        chk(body.get('ok') is True, 'ext/jobs/[id] PATCH: body.ok is true', str(body))
+
+        # Verify it was written
+        status2, body2 = api_request('GET', '/api/ext/jobs', token=EXTENSION_TOKEN)
+        updated_job = next((j for j in body2.get('jobs', []) if j['id'] == test_job_id), None)
+        chk(
+            updated_job is not None and updated_job.get('apply_assistant_status') == 'Autofilled',
+            'ext/jobs/[id] PATCH: apply_assistant_status persisted to Airtable',
+            str(updated_job.get('apply_assistant_status') if updated_job else 'job not found')
+        )
+
+        # Safety check: status field cannot be changed via ext endpoint
+        status, body = api_request(
+            'PATCH', f'/api/ext/jobs/{test_job_id}',
+            {'status': 'Applied'},
+            token=EXTENSION_TOKEN
+        )
+        chk(status == 400, 'ext/jobs/[id] PATCH: status field rejected (safety — never auto-apply)', f'status={status}')
+
+        # No auth
+        status, body = api_request('PATCH', f'/api/ext/jobs/{test_job_id}', {'apply_assistant_status': 'Opened'})
+        chk(status == 401, 'ext/jobs/[id] PATCH: no auth returns 401', f'status={status}')
+
+        # Clean up — reset apply_assistant_status
+        api_request('PATCH', f'/api/ext/jobs/{test_job_id}', {'apply_assistant_status': 'Not Started'}, token=EXTENSION_TOKEN)
+        probe('ext/jobs/[id] PATCH: reset test record to Not Started after test')
+    else:
+        probe('ext/jobs/[id]: no jobs — PATCH tests skipped')
+
+    # ── Phase 7E: /api/ext/token (cookie-gated) ─────────────────────────────
+    sec('Phase 7E · ext/token endpoint (Settings display)')
+
+    # Without cookie — should 401
+    status, body = api_request('GET', '/api/ext/token')
+    chk(status == 401, 'ext/token GET: no cookie returns 401', f'status={status}')
+
+    # With extension token — should also 401 (token not accepted here, only cookie)
+    status, body = api_request('GET', '/api/ext/token', token=EXTENSION_TOKEN)
+    chk(status == 401, 'ext/token GET: bearer token NOT accepted (cookie-only endpoint)', f'status={status}')
+
+    # With valid cookie via browser session
+    page_tok = make_authed_page()
+    page_tok.goto(f'{BASE}/settings', wait_until='networkidle')
+    page_tok.wait_for_timeout(1000)
+
+    # Token panel should render in settings
+    chk(
+        page_tok.locator('text=Apply Assistant Extension').count() > 0 or
+        page_tok.locator('text=Apply Assistant').count() > 0,
+        'Settings: Apply Assistant Extension section present'
+    )
+    chk(
+        page_tok.locator('text=Your API Token').count() > 0 or
+        page_tok.locator('text=API Token').count() > 0,
+        'Settings: API Token label present'
+    )
+    chk(
+        page_tok.locator('button:has-text("Copy")').count() > 0 or
+        page_tok.locator('button:has-text("Copied")').count() > 0,
+        'Settings: Copy token button present'
+    )
+
+    # Setup instructions present
+    chk(
+        page_tok.locator('text=chrome://extensions').count() > 0 or
+        page_tok.locator('text=Load unpacked').count() > 0,
+        'Settings: Extension setup instructions present'
+    )
+    page_tok.close()
+
+    # ── Phase 7F: Settings — My Profile section ─────────────────────────────
+    sec('Phase 7F · Settings — My Profile form')
+
+    page_prof = make_authed_page()
+    page_prof.goto(f'{BASE}/settings', wait_until='networkidle')
+    page_prof.wait_for_timeout(800)
+
+    chk(page_prof.locator('text=My Profile').count() > 0, 'Settings: My Profile section heading present')
+    chk(
+        page_prof.locator('text=Personal and professional info').count() > 0 or
+        page_prof.locator('text=autofill').count() > 0,
+        'Settings: My Profile subtitle present'
+    )
+
+    # Personal fields present
+    for placeholder in ['Hari', 'Kannan', 'hari@example.com', '+1 416']:
+        chk(
+            page_prof.locator(f'input[placeholder*="{placeholder}"]').count() > 0,
+            f'Profile form: input with placeholder "{placeholder}" present'
+        )
+
+    # Professional fields
+    chk(page_prof.locator('input[placeholder*="QA Automation Engineer"]').count() > 0,
+        'Profile form: Current Title field present')
+    chk(
+        page_prof.locator('text=Work Authorization').count() > 0 or
+        page_prof.locator('text=Work Auth').count() > 0,
+        'Profile form: Work Authorization field present'
+    )
+    chk(page_prof.locator('text=Requires sponsorship').count() > 0 or
+        page_prof.locator('text=sponsorship').count() > 0,
+        'Profile form: Sponsorship toggle present')
+
+    # Summary textarea
+    chk(page_prof.locator('textarea').count() > 0, 'Profile form: Summary textarea present')
+
+    # Save Profile button
+    chk(page_prof.locator('button:has-text("Save Profile")').count() > 0, 'Profile form: Save Profile button present')
+
+    # Fill and save a field
+    first_name_input = page_prof.locator('input[placeholder*="Hari"]').first
+    if first_name_input.count() > 0:
+        first_name_input.fill('TestHari')
+        page_prof.locator('button:has-text("Save Profile")').click()
+        page_prof.wait_for_timeout(1500)
+        chk(
+            page_prof.locator('text=Profile saved').count() > 0 or
+            page_prof.locator('[data-sonner-toast]').count() > 0,
+            'Profile form: Save Profile shows success toast'
+        )
+        # Restore
+        first_name_input.fill('Hari')
+        page_prof.locator('button:has-text("Save Profile")').click()
+        page_prof.wait_for_timeout(800)
+    page_prof.close()
+
+    # ── Phase 7G: Resume Vault page ─────────────────────────────────────────
+    sec('Phase 7G · Resume Vault page')
+
+    page_rv = make_authed_page()
+    page_rv.goto(f'{BASE}/resume-vault', wait_until='networkidle')
+    page_rv.wait_for_timeout(600)
+
+    chk(page_rv.locator('h1:has-text("Resume Vault")').count() > 0, 'Resume Vault: page heading present')
+    chk(
+        page_rv.locator('text=Store your resume links').count() > 0 or
+        page_rv.locator('text=default for Apply Assistant').count() > 0,
+        'Resume Vault: subtitle present'
+    )
+
+    # Empty state or existing resumes
+    empty_or_list = (
+        page_rv.locator('text=No resumes yet').count() > 0 or
+        page_rv.locator('text=Add Resume').count() > 0 or
+        page_rv.locator('[class*="rounded-xl"]').filter(has_text='Default').count() > 0
+    )
+    chk(empty_or_list, 'Resume Vault: shows empty state or existing resumes')
+
+    # Add Resume button
+    chk(page_rv.locator('button:has-text("Add Resume")').count() > 0, 'Resume Vault: Add Resume button present')
+
+    # Click Add Resume, fill form, verify form fields appear
+    page_rv.locator('button:has-text("Add Resume")').click()
+    page_rv.wait_for_timeout(300)
+    chk(page_rv.locator('text=Resume Name').count() > 0, 'Resume Vault: Add form shows Resume Name field')
+    chk(page_rv.locator('text=Google Drive').count() > 0, 'Resume Vault: Add form shows Google Drive URL field')
+    chk(page_rv.locator('text=Target Role').count() > 0, 'Resume Vault: Add form shows Target Role field')
+
+    # Add a test resume
+    page_rv.locator('input[placeholder*="QA Engineer"]').first.fill('Test Resume')
+    page_rv.locator('input[type="url"]').first.fill('https://drive.google.com/uc?export=download&id=test123')
+    page_rv.locator('button:has-text("Add Resume")').last.click()
+    page_rv.wait_for_timeout(400)
+    chk(
+        page_rv.locator('text=Test Resume').count() > 0,
+        'Resume Vault: added resume appears in list'
+    )
+
+    # Delete the test resume — wait long enough for the sonner toast to clear
+    page_rv.locator('button[title="Remove"]').last.click()
+    page_rv.wait_for_timeout(5000)  # sonner default is 4 s; wait 5 s for full dismissal
+    chk(
+        page_rv.locator('text=No resumes yet').count() > 0,
+        'Resume Vault: deleted resume removed from list'
+    )
+
+    # Sidebar link
+    chk(
+        page_rv.locator('nav a[href="/resume-vault"]').count() > 0,
+        'Sidebar: Resume Vault nav link present'
+    )
+    page_rv.close()
+
+    # ── Phase 7H: ApplyAssistantBadge on jobs ───────────────────────────────
+    sec('Phase 7H · Apply Assistant status in dashboard')
+
+    page_badge = make_authed_page()
+    page_badge.goto(f'{BASE}/jobs', wait_until='networkidle')
+    page_badge.wait_for_timeout(800)
+
+    # The badge only shows if apply_assistant_status is non-empty on a job.
+    # Most jobs will be empty (Not Started not rendered, only non-empty values).
+    # This is a probe — data-dependent.
+    badge_count = page_badge.evaluate("""() => {
+        const text = document.body.innerText || '';
+        return (text.includes('Autofilled') || text.includes('Ready for Review') ||
+                text.includes('Opened') || text.includes('Applied Manually')) ? 1 : 0;
+    }""")
+    probe('Apply Assistant badges visible on jobs page', f'found={badge_count}')
+
+    # The new Airtable fields are present in the data (check via API)
+    status, jobs_body = api_request('GET', '/api/ext/jobs', token=EXTENSION_TOKEN)
+    if jobs_body.get('jobs'):
+        sample = jobs_body['jobs'][0]
+        chk('apply_assistant_status' in sample, 'Job records have apply_assistant_status field')
+        chk('resume_used' in sample, 'Job records have resume_used field')
+    else:
+        probe('No jobs to verify field presence')
+    page_badge.close()
 
     browser.close()
 

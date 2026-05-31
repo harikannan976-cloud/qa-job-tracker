@@ -10,7 +10,7 @@ export async function GET() {
   }
 }
 
-const TRACKING_FIELDS = ['notes', 'applied_date', 'follow_up_date', 'recruiter_contact'] as const
+const TRACKING_FIELDS = ['notes', 'applied_date', 'follow_up_date', 'recruiter_contact', 'apply_assistant_status', 'resume_used'] as const
 
 export async function PATCH(req: Request) {
   try {

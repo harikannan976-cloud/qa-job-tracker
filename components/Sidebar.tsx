@@ -18,6 +18,7 @@ const NAV_MAIN = [
   { href: '/jobs',          label: 'Jobs',          icon: Briefcase       },
   { href: '/insights',      label: 'AI Insights',   icon: Sparkles        },
   { href: '/cover-letters', label: 'Cover Letters', icon: FileText        },
+  { href: '/resume-vault',  label: 'Resume Vault',  icon: FileText        },
   { href: '/analytics',     label: 'Analytics',     icon: BarChart2       },
   { href: '/automation',    label: 'Automation',    icon: Zap             },
 ]

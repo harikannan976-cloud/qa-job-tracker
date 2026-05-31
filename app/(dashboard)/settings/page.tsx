@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { X, Plus, Loader2, RotateCcw, Save } from 'lucide-react'
 import { usePreferences } from '@/hooks/usePreferences'
 import { PREFERENCE_DEFAULTS, UserPreferences } from '@/lib/preferences'
+import ProfileForm from '@/components/ProfileForm'
+import ExtensionTokenPanel from '@/components/ExtensionTokenPanel'
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
@@ -224,7 +226,7 @@ export default function SettingsPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-white tracking-tight">Settings</h1>
-          <p className="text-[13px] text-zinc-500 mt-1">Job search preferences, AI matching, and reminders</p>
+          <p className="text-[13px] text-zinc-500 mt-1">Profile, job search preferences, AI matching, and Apply Assistant</p>
         </div>
         {isDirty && (
           <span className="text-[11px] px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-full font-medium self-center">
@@ -232,6 +234,14 @@ export default function SettingsPage() {
           </span>
         )}
       </div>
+
+      {/* ── Section 0: My Profile ────────────────────────────────────────── */}
+      <SectionCard
+        title="My Profile"
+        subtitle="Personal and professional info used by Apply Assistant to autofill job applications"
+      >
+        <ProfileForm />
+      </SectionCard>
 
       {/* ── Section 1: Job Search ─────────────────────────────────────────── */}
       <SectionCard
@@ -382,6 +392,14 @@ export default function SettingsPage() {
             suffix="applications / week"
           />
         </div>
+      </SectionCard>
+
+      {/* ── Section 4: Apply Assistant Extension ─────────────────────────── */}
+      <SectionCard
+        title="Apply Assistant Extension"
+        subtitle="Connect the browser extension to autofill job applications from your profile"
+      >
+        <ExtensionTokenPanel />
       </SectionCard>
 
       {/* ── Footer actions ────────────────────────────────────────────────── */}
