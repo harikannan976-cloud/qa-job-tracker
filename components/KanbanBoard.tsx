@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DndContext, DragOverlay, pointerWithin,
+  PointerSensor, useSensor, useSensors,
   type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
@@ -228,6 +229,10 @@ function KanbanColumn({
 // ─── Main board ───────────────────────────────────────────────────────────────
 
 export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
+
   const [jobs,        setJobs]        = useState<Job[]>(initialJobs)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [overId,      setOverId]      = useState<string | null>(null)
@@ -289,6 +294,7 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
   return (
     <>
       <DndContext
+        sensors={sensors}
         collisionDetection={pointerWithin}
         onDragStart={onDragStart}
         onDragOver={onDragOver as never}
