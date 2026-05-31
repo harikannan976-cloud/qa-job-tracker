@@ -1560,21 +1560,28 @@ with sync_playwright() as pw:
 
     # ── Auto-set applied_date on Mark Applied ──────────────────────────────
     sec('Phase 2 C2 · Tracking — applied_date auto-fills on Mark Applied')
+    # Card clicks now navigate to /jobs/[id] — test on the detail page directly
     page.goto(f'{BASE}/jobs', wait_until='networkidle')
     page.wait_for_timeout(400)
-    # Find a card NOT in Applied/Interviewing/Offer (Mark Applied button visible)
     found_mark_applied = False
+    card_urls = []
     for card in page.locator('[role="article"]').all()[:6]:
+        href = card.get_attribute('data-id') or ''
+        # Collect job IDs by checking the card's link if any; otherwise click each one
+        card_urls.append(card)
+    for card in card_urls:
         card.click()
-        page.wait_for_timeout(400)
-        if page.locator('[role="dialog"]').count() == 0:
+        page.wait_for_timeout(1200)
+        if '/jobs/' not in page.url:
+            page.goto(f'{BASE}/jobs', wait_until='networkidle')
+            page.wait_for_timeout(400)
             continue
-        panel      = page.locator('[role="dialog"]').first
-        mark_btn   = panel.get_by_role('button', name='Mark Applied')
-        date_input = panel.locator('input[type="date"]').first
+        # We're on /jobs/[id] — look for "Mark Applied" button
+        mark_btn   = page.locator('button').filter(has_text='Mark Applied').first
+        date_input = page.locator('input[type="date"]').first
         if mark_btn.count() == 0 or not mark_btn.is_visible():
-            page.keyboard.press('Escape')
-            page.wait_for_timeout(300)
+            page.go_back()
+            page.wait_for_timeout(600)
             continue
         # Clear applied_date first so auto-set can trigger
         current_date = date_input.input_value()
@@ -1594,8 +1601,8 @@ with sync_playwright() as pw:
             f'applied_date auto-filled with today ({today}) after Mark Applied',
             f'got: {new_date!r}')
         found_mark_applied = True
-        page.keyboard.press('Escape')
-        page.wait_for_timeout(300)
+        page.go_back()
+        page.wait_for_timeout(600)
         break
     if not found_mark_applied:
         probe('Auto-set applied_date', 'No card with "Mark Applied" button found')
@@ -2012,17 +2019,20 @@ with sync_playwright() as pw:
     page.goto(f'{BASE}/jobs', wait_until='networkidle')
     page.wait_for_timeout(400)
     found_auto_followup = False
+    # Card clicks now navigate to /jobs/[id] — test on the detail page directly
     for card in page.locator('[role="article"]').all()[:6]:
         card.click()
-        page.wait_for_timeout(400)
-        if page.locator('[role="dialog"]').count() == 0:
+        page.wait_for_timeout(1200)
+        if '/jobs/' not in page.url:
+            page.goto(f'{BASE}/jobs', wait_until='networkidle')
+            page.wait_for_timeout(400)
             continue
-        panel      = page.locator('[role="dialog"]').first
-        mark_btn   = panel.get_by_role('button', name='Mark Applied')
-        followup_input = panel.locator('input[type="date"]').nth(1)
+        # We're on /jobs/[id] — look for "Mark Applied" button
+        mark_btn       = page.locator('button').filter(has_text='Mark Applied').first
+        followup_input = page.locator('input[type="date"]').nth(1)
         if mark_btn.count() == 0 or not mark_btn.is_visible():
-            page.keyboard.press('Escape')
-            page.wait_for_timeout(300)
+            page.go_back()
+            page.wait_for_timeout(600)
             continue
         # Clear follow-up date so auto-suggest can trigger
         followup_input.fill('')
@@ -2044,8 +2054,8 @@ with sync_playwright() as pw:
                 f'Follow-up date auto-set to today+5 ({expected})',
                 f'got: {followup_val!r}')
             found_auto_followup = True
-        page.keyboard.press('Escape')
-        page.wait_for_timeout(300)
+        page.go_back()
+        page.wait_for_timeout(600)
         break
     if not found_auto_followup:
         probe('Follow-up auto-suggest', 'No eligible card found (all may be Applied already)')
@@ -3290,36 +3300,40 @@ with sync_playwright() as pw:
 
     followup_btn_found = False
 
-    # Try clicking job cards until we find one with the Follow-Up button
-    cards = page.locator('[class*="cursor-pointer"]').all()
-    for card in cards[:6]:
+    # Card clicks navigate to /jobs/[id] — check each detail page for the button
+    for card in page.locator('[role="article"]').all()[:6]:
         try:
-            card.click(timeout=2000)
-            page.wait_for_timeout(500)
+            card.click(timeout=3000)
+            page.wait_for_timeout(800)
+            if '/jobs/' not in page.url:
+                page.goto(f'{BASE}/jobs', wait_until='networkidle')
+                page.wait_for_timeout(400)
+                continue
             if page.locator('button:has-text("Generate Follow-Up Message")').count() > 0:
                 followup_btn_found = True
                 break
-            # Close panel and try next
-            close_btn = page.locator('button[aria-label="Close job detail panel"]')
-            if close_btn.count() > 0:
-                close_btn.click()
-                page.wait_for_timeout(300)
+            # Job not in Applied/Interviewing/Offer — go back and try next
+            page.go_back()
+            page.wait_for_timeout(600)
         except Exception:
-            pass
+            if '/jobs/' in page.url:
+                page.go_back()
+                page.wait_for_timeout(600)
 
     if not followup_btn_found:
-        # Mark the first job as Applied via the status buttons, then check
+        # Mark the first job as Applied via the status buttons on the detail page, then check
         page.goto(f'{BASE}/jobs', wait_until='networkidle')
         page.wait_for_timeout(800)
         try:
-            page.locator('[class*="cursor-pointer"]').first.click(timeout=3000)
-            page.wait_for_timeout(500)
-            applied_btn = page.locator('button:has-text("Applied")').first
-            if applied_btn.count() > 0:
-                applied_btn.click()
-                page.wait_for_timeout(600)
-                if page.locator('button:has-text("Generate Follow-Up Message")').count() > 0:
-                    followup_btn_found = True
+            page.locator('[role="article"]').first.click(timeout=3000)
+            page.wait_for_timeout(800)
+            if '/jobs/' in page.url:
+                applied_btn = page.locator('button').filter(has_text='Applied').first
+                if applied_btn.count() > 0:
+                    applied_btn.click()
+                    page.wait_for_timeout(600)
+                    if page.locator('button:has-text("Generate Follow-Up Message")').count() > 0:
+                        followup_btn_found = True
         except Exception:
             pass
 
