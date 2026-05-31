@@ -67,7 +67,12 @@ function StageSection({ group }: { group: StageGroup }) {
           </div>
         ))}
         {group.jobs.length > 5 && (
-          <p className="text-[11px] text-zinc-600 pl-3">+{group.jobs.length - 5} more</p>
+          <Link
+            href="/pipeline"
+            className="text-[11px] text-zinc-600 hover:text-indigo-400 transition-colors pl-3"
+          >
+            +{group.jobs.length - 5} more →
+          </Link>
         )}
       </div>
     </div>
