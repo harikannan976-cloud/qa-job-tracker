@@ -221,6 +221,7 @@ const BUCKET_META: Record<string, BucketMeta> = {
   today:     { label: 'Due Today',           Icon: Clock,        accent: 'text-amber-400',  dot: 'bg-amber-400'  },
   week:      { label: 'Due This Week',       Icon: Calendar,     accent: 'text-indigo-400', dot: 'bg-indigo-400' },
   interview: { label: 'Interview Follow-Ups',Icon: MessageSquare,accent: 'text-orange-400', dot: 'bg-orange-400' },
+  needs:     { label: 'Needs Scheduling',    Icon: CalendarDays, accent: 'text-zinc-400',   dot: 'bg-zinc-600'   },
 }
 
 function BucketSection({
@@ -301,7 +302,20 @@ export default function FollowUpPage({ jobs }: Props) {
     return effectiveJobs.filter(j => j.status === 'Interviewing' && !timeIds.has(j.id))
   }, [effectiveJobs, overdue, dueToday, dueThisWeek])
 
-  const totalPending = overdue.length + dueToday.length + dueThisWeek.length + interviewFollowUps.length
+  // Needs Scheduling: Applied/Interviewing jobs with no follow_up_date and not already in another bucket
+  const needsScheduling = useMemo(() => {
+    const trackedIds = new Set([
+      ...overdue.map(j => j.id),
+      ...dueToday.map(j => j.id),
+      ...dueThisWeek.map(j => j.id),
+      ...interviewFollowUps.map(j => j.id),
+    ])
+    return effectiveJobs.filter(j =>
+      ['Applied', 'Interviewing'].includes(j.status) && !trackedIds.has(j.id)
+    )
+  }, [effectiveJobs, overdue, dueToday, dueThisWeek, interviewFollowUps])
+
+  const totalPending = overdue.length + dueToday.length + dueThisWeek.length + interviewFollowUps.length + needsScheduling.length
 
   async function handleMarkComplete(job: Job) {
     setCompletedIds(prev => new Set(prev).add(job.id))
@@ -369,6 +383,7 @@ export default function FollowUpPage({ jobs }: Props) {
     ['today',     dueToday],
     ['week',      dueThisWeek],
     ['interview', interviewFollowUps],
+    ['needs',     needsScheduling],
   ]
 
   return (
