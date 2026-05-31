@@ -4,11 +4,10 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import {
   Target, CalendarClock, FileText, Mic2,
-  ArrowRight, CheckCircle2, ExternalLink, type LucideIcon,
+  ArrowRight, CheckCircle2, type LucideIcon,
 } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import { loadPreferences } from '@/lib/preferences'
-import { logActivity } from '@/lib/activity'
 import { buildDailyPlan, buildApplicationQueue, type QueueItem } from '@/lib/actionEngine'
 import { categoriseFollowUps } from '@/lib/followUpHelpers'
 
@@ -135,13 +134,7 @@ function Section({
 
 // ─── Apply section ────────────────────────────────────────────────────────────
 
-function ApplySection({
-  items,
-  onApply,
-}: {
-  items:   QueueItem[]
-  onApply: (job: Job) => void
-}) {
+function ApplySection({ items }: { items: QueueItem[] }) {
   const visible = items.slice(0, 5)
 
   return (
@@ -153,12 +146,16 @@ function ApplySection({
       {visible.map(item => {
         const { job, reasons } = item
         return (
-          <div key={job.id} className="flex items-start gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors">
+          <Link
+            key={job.id}
+            href={`/jobs/${job.id}`}
+            className="flex items-start gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors group"
+          >
             <div className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-[12px] font-bold ${scoreBadgeCls(job.ai_score)}`}>
               {job.ai_score}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold text-zinc-200 truncate">{job.job_title}</p>
+              <p className="text-[12px] font-semibold text-zinc-200 group-hover:text-white truncate transition-colors">{job.job_title}</p>
               <p className="text-[11px] text-zinc-600 truncate">{job.employer_name}</p>
               {reasons.filter(r => r.positive).slice(0, 2).length > 0 && (
                 <p className="text-[10px] text-zinc-700 mt-0.5 truncate">
@@ -166,17 +163,7 @@ function ApplySection({
                 </p>
               )}
             </div>
-            {job.job_apply_link && (
-              <button
-                type="button"
-                onClick={() => onApply(job)}
-                className="flex-shrink-0 flex items-center gap-1 text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1.5 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-              >
-                <ExternalLink className="w-3 h-3" />
-                Apply
-              </button>
-            )}
-          </div>
+          </Link>
         )
       })}
       {items.length > 5 && (
@@ -201,21 +188,20 @@ function FollowUpSection({ jobs }: { jobs: Job[] }) {
         const today = new Date().toISOString().split('T')[0]
         const isOverdue = job.follow_up_date && job.follow_up_date < today
         return (
-          <div key={job.id} className="flex items-center gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors">
+          <Link
+            key={job.id}
+            href={`/jobs/${job.id}`}
+            className="flex items-center gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors group"
+          >
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold text-zinc-200 truncate">{job.job_title}</p>
+              <p className="text-[12px] font-semibold text-zinc-200 group-hover:text-white truncate transition-colors">{job.job_title}</p>
               <p className="text-[11px] text-zinc-600 truncate">
                 {job.employer_name}
                 {job.follow_up_date ? ` · ${isOverdue ? 'Overdue: ' : ''}${formatDate(job.follow_up_date)}` : ''}
               </p>
             </div>
-            <Link
-              href="/follow-up"
-              className="flex-shrink-0 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors"
-            >
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
+            <ArrowRight className="flex-shrink-0 w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-300 transition-colors" />
+          </Link>
         )
       })}
       {jobs.length > 5 && (
@@ -237,21 +223,20 @@ function CoverLettersSection({ jobs }: { jobs: Job[] }) {
       href="/cover-letters" hrefLabel="Cover Letters"
     >
       {visible.map(job => (
-        <div key={job.id} className="flex items-center gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors">
+        <Link
+          key={job.id}
+          href={`/jobs/${job.id}`}
+          className="flex items-center gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors group"
+        >
           <div className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-[12px] font-bold ${scoreBadgeCls(job.ai_score)}`}>
             {job.ai_score}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-semibold text-zinc-200 truncate">{job.job_title}</p>
+            <p className="text-[12px] font-semibold text-zinc-200 group-hover:text-white truncate transition-colors">{job.job_title}</p>
             <p className="text-[11px] text-zinc-600 truncate">{job.employer_name} · No cover letter yet</p>
           </div>
-          <Link
-            href="/cover-letters"
-            className="flex-shrink-0 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors"
-          >
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
+          <ArrowRight className="flex-shrink-0 w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-300 transition-colors" />
+        </Link>
       ))}
       {jobs.length > 5 && (
         <p className="text-[11px] text-zinc-600 pl-3">+{jobs.length - 5} more</p>
@@ -272,24 +257,23 @@ function InterviewPrepSection({ jobs }: { jobs: Job[] }) {
       href="/pipeline" hrefLabel="Pipeline"
     >
       {visible.map(job => (
-        <div key={job.id} className="flex items-center gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors">
+        <Link
+          key={job.id}
+          href={`/jobs/${job.id}`}
+          className="flex items-center gap-3 bg-[#0d0d14] border border-[#1a1a26] rounded-xl px-3 py-2.5 hover:border-[#252538] transition-colors group"
+        >
           <div className="flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center bg-orange-500/10 ring-1 ring-orange-500/20">
             <Mic2 className="w-3.5 h-3.5 text-orange-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-semibold text-zinc-200 truncate">{job.job_title}</p>
+            <p className="text-[12px] font-semibold text-zinc-200 group-hover:text-white truncate transition-colors">{job.job_title}</p>
             <p className="text-[11px] text-zinc-600 truncate">
               {job.employer_name}
               {job.recruiter_contact ? ` · ${job.recruiter_contact}` : ''}
             </p>
           </div>
-          <Link
-            href="/pipeline"
-            className="flex-shrink-0 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors"
-          >
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
+          <ArrowRight className="flex-shrink-0 w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-300 transition-colors" />
+        </Link>
       ))}
     </Section>
   )
@@ -298,18 +282,16 @@ function InterviewPrepSection({ jobs }: { jobs: Job[] }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function DailyCommandCenter({ jobs }: Props) {
-  const [prefs]       = useState(() => loadPreferences())
-  const [appliedIds,  setAppliedIds]  = useState<Set<string>>(new Set())
+  const [prefs] = useState(() => loadPreferences())
 
   const { queue, plan, followUpDue, coverLettersNeeded, interviewingJobs } = useMemo(() => {
-    const visible = jobs.filter(j => !appliedIds.has(j.id))
-    const q   = buildApplicationQueue(visible, prefs)
-    const p   = buildDailyPlan(visible, prefs)
-    const { overdue, dueToday } = categoriseFollowUps(visible)
-    const clNeeded = visible.filter(
+    const q   = buildApplicationQueue(jobs, prefs)
+    const p   = buildDailyPlan(jobs, prefs)
+    const { overdue, dueToday } = categoriseFollowUps(jobs)
+    const clNeeded = jobs.filter(
       j => j.status === 'New' && j.ai_score >= (prefs.minScoreThreshold ?? 7) && !j.cover_letter_url
     )
-    const interviewing = visible.filter(j => j.status === 'Interviewing')
+    const interviewing = jobs.filter(j => j.status === 'Interviewing')
 
     return {
       queue:              q,
@@ -318,21 +300,7 @@ export default function DailyCommandCenter({ jobs }: Props) {
       coverLettersNeeded: clNeeded,
       interviewingJobs:   interviewing,
     }
-  }, [jobs, prefs, appliedIds])
-
-  async function handleApply(job: Job) {
-    if (!job.job_apply_link) return
-    window.open(job.job_apply_link, '_blank', 'noopener,noreferrer')
-    logActivity({ type: 'posting_opened', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
-    setAppliedIds(prev => new Set(prev).add(job.id))
-    try {
-      await fetch('/api/jobs', {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ recordId: job.id, status: 'Applied' }),
-      })
-    } catch { /* optimistic stays */ }
-  }
+  }, [jobs, prefs])
 
   const stats: StatDef[] = [
     { label: 'Apply',          value: plan.toApply,            color: 'text-emerald-400', Icon: Target        },
@@ -350,7 +318,7 @@ export default function DailyCommandCenter({ jobs }: Props) {
       {hasAnything && (
         <>
           {queue.today.length > 0 && (
-            <ApplySection items={queue.today} onApply={handleApply} />
+            <ApplySection items={queue.today} />
           )}
 
           {followUpDue.length > 0 && (
