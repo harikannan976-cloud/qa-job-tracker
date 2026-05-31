@@ -48,12 +48,13 @@ function StageSection({ group }: { group: StageGroup }) {
       </div>
       <div className="space-y-1.5">
         {group.jobs.slice(0, 5).map(job => (
-          <div
+          <Link
             key={job.id}
-            className="flex items-center gap-2 bg-[#0d0d14] border border-[#1a1a26] rounded-lg px-3 py-2"
+            href={`/jobs/${job.id}?from=dashboard`}
+            className="flex items-center gap-2 bg-[#0d0d14] border border-[#1a1a26] rounded-lg px-3 py-2 hover:border-[#252538] transition-colors group"
           >
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium text-zinc-300 truncate">{job.job_title}</p>
+              <p className="text-[12px] font-medium text-zinc-300 group-hover:text-white truncate transition-colors">{job.job_title}</p>
               <p className="text-[11px] text-zinc-600 truncate">{job.employer_name}</p>
             </div>
             {job.recruiter_contact && (
@@ -64,7 +65,7 @@ function StageSection({ group }: { group: StageGroup }) {
             {job.follow_up_date && (
               <span className="flex-shrink-0 text-[10px] text-zinc-600">↻ {job.follow_up_date}</span>
             )}
-          </div>
+          </Link>
         ))}
         {group.jobs.length > 5 && (
           <Link
