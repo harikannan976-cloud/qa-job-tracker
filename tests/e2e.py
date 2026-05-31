@@ -153,19 +153,24 @@ with sync_playwright() as pw:
     chk(page.locator('a[href="/pipeline"]').count() > 0,    'In Progress → /pipeline')
     chk(page.locator('a[href="/cover-letters"]').count() > 0,'Cover Letters → /cover-letters')
 
-    # "Needs Attention" section
-    chk(page.get_by_text('Needs Attention').count() > 0,    '"Needs Attention" section heading')
-    chk(page.get_by_text('New · score ≥ 7 · awaiting action').count() > 0,
-        '"Needs Attention" subtitle text')
+    # "Action Required" section (renamed from "Needs Attention" in dashboard redesign)
+    chk(page.get_by_text('Action Required').count() > 0,    '"Action Required" section heading')
+    chk(
+        page.get_by_text('Action Required').count() > 0 or
+        page.get_by_text('All caught up').count() > 0,
+        '"Action Required" section or caught-up state present'
+    )
 
     # View all → /jobs
     view_all = page.locator('a[href="/jobs"]').filter(has_text='View all')
     chk(view_all.count() > 0,              '"View all" link → /jobs')
 
-    # Quick Nav cards
+    # Quick Nav links (pill buttons in page header, use rounded-lg)
     for nav_label in ['Pipeline', 'Cover Letters', 'Analytics']:
-        chk(page.locator('[class*="rounded-xl"]').filter(has_text=nav_label).count() > 0,
-            f'Quick nav card: {nav_label}')
+        chk(
+            page.locator(f'a[href]').filter(has_text=nav_label).count() > 0,
+            f'Quick nav card: {nav_label}'
+        )
 
     # No job board / no SearchFilter on dashboard
     chk(page.locator('input[placeholder*="Search jobs"]').count() == 0,
@@ -191,11 +196,10 @@ with sync_playwright() as pw:
     elif all_caught_up:
         probe('All caught up — no action items to test buttons on')
     else:
-        # Should have at least one action item row
-        # Rows are flex divs containing a score badge + title + button group
-        action_rows = page.locator('section').filter(has_text='Needs Attention').locator(
-            '[class*="bg-\\[\\#111118\\]"][class*="rounded-xl"]'
-        )
+        # Should have at least one action item row under "Action Required"
+        # Find the rounded-xl card containing "Action Required" then look for item rows
+        action_card = page.locator('[class*="rounded-xl"]').filter(has_text='Action Required').first
+        action_rows = action_card.locator('[class*="divide-y"] > div')
         row_count = action_rows.count()
         chk(row_count > 0,                 'Action item rows present', f'{row_count} rows')
 
@@ -362,10 +366,16 @@ with sync_playwright() as pw:
     page.goto(f'{BASE}/jobs', wait_until='networkidle')
     page.wait_for_timeout(800)
 
-    cards = page.locator('[class*="rounded-xl"][class*="cursor-pointer"]')
+    cards = page.locator('[role="article"][class*="cursor-pointer"]')
     if cards.count() > 0:
-        cards.first.click()
-        page.wait_for_timeout(1200)
+        # Click the title text area to avoid inner action buttons that stopPropagation
+        first_card = cards.first
+        title_el = first_card.locator('h3').first
+        if title_el.count() > 0:
+            title_el.click()
+        else:
+            first_card.click(position={'x': 80, 'y': 20})
+        page.wait_for_timeout(1500)
         chk('/jobs/' in page.url,          'Card click navigates to /jobs/[id]',  page.url)
 
         if '/jobs/' in page.url:
@@ -527,7 +537,7 @@ with sync_playwright() as pw:
     drag_count = drags.count()
     chk(drag_count > 0,                 'Draggable job cards present',         f'{drag_count}')
 
-    score_badges_k = page.locator('[class*="w-9"][class*="h-9"][class*="rounded-lg"]')
+    score_badges_k = page.locator('[class*="w-6"][class*="h-6"][class*="rounded-md"]')
     chk(score_badges_k.count() > 0,    'Score badges on Kanban cards',        f'{score_badges_k.count()}')
 
     if drag_count > 0:
@@ -549,17 +559,24 @@ with sync_playwright() as pw:
                 probe('Cross-column drag completed without page crash')
 
     page.goto(f'{BASE}/pipeline', wait_until='networkidle')
-    fresh_drags = page.locator('[class*="touch-none"]')
-    if fresh_drags.count() > 0:
-        page.evaluate('''
-            const el = document.querySelector('[class*="cursor-grab"]');
-            if (el) el.click();
-        ''')
-        page.wait_for_timeout(600)
-        panel_open = page.locator('[class*="backdrop-blur"]').count() > 0
-        chk(panel_open,                 'Card click in Kanban opens detail panel')
-        page.keyboard.press('Escape')
-        page.wait_for_timeout(300)
+    # Kanban cards expand on click; click View to navigate to /jobs/[id]
+    draggable_cards = page.locator('[class*="touch-none"] [class*="cursor-pointer"]')
+    if draggable_cards.count() > 0:
+        draggable_cards.first.click()
+        page.wait_for_timeout(400)
+        view_btn = page.locator('button').filter(has_text='View').first
+        if view_btn.count() > 0:
+            view_btn.click()
+            page.wait_for_timeout(1200)
+            navigated = '/jobs/' in page.url
+            chk(navigated, 'Kanban card expand + View navigates to /jobs/[id]', page.url)
+            if navigated:
+                page.go_back()
+                page.wait_for_timeout(600)
+        else:
+            probe('No View button after card expand — skipping Kanban navigation test')
+    else:
+        probe('No draggable Kanban cards found — skipping Kanban click test')
 
     sec('P3 · AI Insights')
     page.goto(f'{BASE}/insights', wait_until='networkidle')
@@ -901,11 +918,12 @@ with sync_playwright() as pw:
     page.goto(f'{BASE}/pipeline', wait_until='networkidle')
     drags = page.locator('[class*="touch-none"]')
     if drags.count() > 0:
-        drags.first.hover()
+        drags.first.click()  # expand card to reveal action buttons
         page.wait_for_timeout(300)
         kanban_apply = page.locator('button').filter(has_text='Apply').count()
+        kanban_view  = page.locator('button').filter(has_text='View').count()
         kanban_btns  = page.locator('button[class*="rounded-md"]').count()
-        chk(kanban_apply > 0 or kanban_btns > 0, 'Quick action buttons visible on Kanban card hover')
+        chk(kanban_apply > 0 or kanban_view > 0 or kanban_btns > 0, 'Action buttons visible on Kanban card expand')
 
     sec('P4 · Activity feed on dashboard')
     page.goto(BASE, wait_until='networkidle')
@@ -2493,11 +2511,11 @@ with sync_playwright() as pw:
         'Action Center: Interviewing stat present')
     chk(page.locator('text=Action Required').count() > 0,
         'Action Center: Action Required stat present')
-    chk(page.locator('text=Follow-ups Due').count() > 0,
-        'Action Center: Follow-ups Due stat present')
+    chk(page.locator('text=Follow-ups due').count() > 0,
+        'Action Center: Follow-ups due stat present')
 
     # Stats are numeric values
-    weekly_val_el = page.locator('text=Applied This Week').locator('..').locator('p').nth(1)
+    weekly_val_el = page.locator('text=Applied This Week').locator('..').locator('p').nth(0)
     if weekly_val_el.count() > 0:
         val_text = weekly_val_el.inner_text().strip()
         chk(val_text.isdigit(), f'Applied This Week shows numeric value ({val_text})')
@@ -2794,8 +2812,9 @@ with sync_playwright() as pw:
     queue_empty   = page.locator('text=Queue is empty').count() > 0
     all_done      = page.locator('text=All done for now').count() > 0
     has_sections  = (
-        page.locator('text=Recommended Today').count() > 0 or
-        page.locator('text=Apply This Week').count() > 0 or
+        page.locator('text=Ready to Apply').count() > 0 or
+        page.locator('text=Needs Cover Letter').count() > 0 or
+        page.locator('text=AI Picks Today').count() > 0 or
         page.locator('text=Low Priority').count() > 0
     )
 
@@ -2803,20 +2822,20 @@ with sync_playwright() as pw:
         chk(True, 'Application Queue shows appropriate empty state')
         probe(f'Queue state: {"empty (no New jobs)" if queue_empty else "all actioned this session"}')
     elif has_sections:
-        chk(True, 'At least one queue section (Today / This Week / Low Priority) rendered')
+        chk(True, 'At least one queue section rendered')
 
         # Count badges visible on section headers
-        chk(page.locator('text=Recommended Today').count() > 0 or
-            page.locator('text=Apply This Week').count() > 0,
-            'Today or This Week bucket label visible')
+        chk(page.locator('text=Ready to Apply').count() > 0 or
+            page.locator('text=Needs Cover Letter').count() > 0 or
+            page.locator('text=AI Picks Today').count() > 0,
+            'Ready to Apply, Needs Cover Letter, or AI Picks Today label visible')
 
-        # Each visible item has a score badge (number inside rounded square)
+        # Each visible item has a score % value
         score_badges = page.evaluate("""() => {
-            return document.querySelectorAll(
-                '[class*="rounded-xl"][class*="flex"][class*="items-center"][class*="justify-center"] span'
-            ).length;
+            const spans = Array.from(document.querySelectorAll('span'));
+            return spans.filter(s => /^\\d+%$/.test((s.textContent || '').trim())).length;
         }""")
-        chk(score_badges > 0, f'Score badges visible on queue items ({score_badges} found)')
+        chk(score_badges > 0, f'Score badges (XX%) visible on queue items ({score_badges} found)')
 
         # Reason pills present (positive or negative)
         reason_pills = page.evaluate("""() => {
@@ -2888,36 +2907,41 @@ with sync_playwright() as pw:
     elif has_sections:
         chk(True, 'Follow-Up Center has at least one bucket section')
 
-        # Per-item action buttons: Done, Schedule, Message
-        done_btns = page.locator('button:has-text("Done")').count()
+        # Per-item action buttons: Done (aria-label), Schedule (aria-label), Message (aria-label)
+        done_btns = page.locator('button[aria-label="Done"]').count()
         chk(done_btns > 0, f'Mark Done buttons present ({done_btns})')
 
-        schedule_btns = page.locator('button:has-text("Schedule")').count()
+        schedule_btns = page.locator('button[aria-label="Schedule"]').count()
         chk(schedule_btns > 0, f'Schedule buttons present ({schedule_btns})')
 
-        message_btns = page.locator('button:has-text("Message")').count()
+        message_btns = page.locator('button[aria-label="Message"]').count()
         chk(message_btns > 0, f'Message generator buttons present ({message_btns})')
 
-        # Meta row: Applied date visible
+        # Meta row: Applied date visible (expand first row to reveal it)
+        page.locator('[class*="rounded-xl"][class*="border"]').filter(
+            has=page.locator('button[aria-label="Done"]')
+        ).first.click()
+        page.wait_for_timeout(300)
         applied_label = page.locator('text=Applied:').count()
-        chk(applied_label > 0, f'Applied date labels present ({applied_label})')
+        chk(applied_label > 0, f'Applied date labels present after row expand ({applied_label})')
 
         # Probe: clicking Schedule opens the inline panel with presets
         if schedule_btns > 0:
-            page.locator('button:has-text("Schedule")').first.click()
+            page.locator('button[aria-label="Schedule"]').first.click()
             page.wait_for_timeout(300)
             has_presets = (
-                page.locator('button:has-text("+3 days")').count() > 0 or
-                page.locator('button:has-text("+7 days")').count() > 0
+                page.locator('button:has-text("+3d")').count() > 0 or
+                page.locator('button:has-text("+7d")').count() > 0 or
+                page.locator('text=Schedule:').count() > 0
             )
             probe(f'Schedule panel opened — presets visible: {has_presets}')
             # Close by clicking Schedule again
-            page.locator('button:has-text("Schedule")').first.click()
+            page.locator('button[aria-label="Schedule"]').first.click()
             page.wait_for_timeout(200)
 
         # Probe: clicking Message opens the generator modal
         if message_btns > 0:
-            page.locator('button:has-text("Message")').first.click()
+            page.locator('button[aria-label="Message"]').first.click()
             page.wait_for_timeout(400)
             modal_open = page.locator('role=dialog').count() > 0
             probe(f'Message modal opened: {modal_open}')

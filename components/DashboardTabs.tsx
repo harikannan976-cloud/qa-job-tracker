@@ -2,20 +2,22 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Target, AlertCircle, GitBranch, Activity, ArrowRight, Sparkles } from 'lucide-react'
+import { Target, AlertCircle, GitBranch, Activity, TrendingUp, ArrowRight, Sparkles } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import TodaysFocus from './TodaysFocus'
 import DashboardActionItems from './DashboardActionItems'
 import InterviewTracker from './InterviewTracker'
 import ActivityFeed from './ActivityFeed'
+import DashboardPreferencePanel from './DashboardPreferencePanel'
 
-type Tab = 'focus' | 'attention' | 'opportunities' | 'activity'
+type Tab = 'focus' | 'attention' | 'opportunities' | 'activity' | 'goal'
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
-  { id: 'focus',         label: "Today's Focus",       Icon: Target      },
-  { id: 'attention',     label: 'Needs Attention',     Icon: AlertCircle },
-  { id: 'opportunities', label: 'Active Opportunities', Icon: GitBranch  },
-  { id: 'activity',      label: 'Recent Activity',     Icon: Activity    },
+  { id: 'focus',         label: "Today's Focus",        Icon: Target       },
+  { id: 'attention',     label: 'Needs Attention',      Icon: AlertCircle  },
+  { id: 'opportunities', label: 'Active Opportunities', Icon: GitBranch    },
+  { id: 'activity',      label: 'Recent Activity',      Icon: Activity     },
+  { id: 'goal',          label: 'Weekly Goal',          Icon: TrendingUp   },
 ]
 
 interface Props {
@@ -28,9 +30,9 @@ export default function DashboardTabs({ jobs, actionItems, total }: Props) {
   const [active, setActive] = useState<Tab>('focus')
 
   return (
-    <div className="mb-6">
-      {/* Tab bar */}
-      <div className="flex items-center gap-0.5 border-b border-[#1a1a26] mb-5 overflow-x-auto
+    <div>
+      {/* Tab bar — sticky so it stays visible while page scrolls */}
+      <div className="sticky top-0 z-10 bg-[#0a0a0f] flex items-center gap-0.5 border-b border-[#1a1a26] mb-5 overflow-x-auto
                       [&::-webkit-scrollbar]:hidden">
         {TABS.map(({ id, label, Icon }) => (
           <button
@@ -49,12 +51,8 @@ export default function DashboardTabs({ jobs, actionItems, total }: Props) {
         ))}
       </div>
 
-      {/* Tab content — scrollable */}
-      <div className="overflow-y-auto max-h-[calc(100vh-22rem)] pr-1
-                      [&::-webkit-scrollbar]:w-1
-                      [&::-webkit-scrollbar-track]:bg-transparent
-                      [&::-webkit-scrollbar-thumb]:bg-[#2a2a3a]
-                      [&::-webkit-scrollbar-thumb]:rounded-full">
+      {/* Tab content — min-h fills viewport, long tabs let page scroll */}
+      <div style={{ minHeight: 'calc(100vh - 20rem)' }}>
 
         {active === 'focus' && (
           <TodaysFocus jobs={jobs} />
@@ -104,6 +102,10 @@ export default function DashboardTabs({ jobs, actionItems, total }: Props) {
           <div className="bg-[#0d0d14] border border-[#1a1a26] rounded-xl p-4 min-h-[200px]">
             <ActivityFeed limit={50} />
           </div>
+        )}
+
+        {active === 'goal' && (
+          <DashboardPreferencePanel jobs={jobs} />
         )}
 
       </div>
