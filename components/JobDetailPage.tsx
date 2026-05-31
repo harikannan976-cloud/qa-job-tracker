@@ -1,19 +1,23 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { ExternalLink, Copy, Check, FileText, X, ChevronDown, ChevronUp, Loader2, MessageSquare } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import {
+  ExternalLink, Copy, Check, FileText, X, ChevronDown, ChevronUp,
+  Loader2, MessageSquare, ArrowLeft, ChevronLeft, ChevronRight,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
-import { logActivity, getActivity, activityLabel, timeAgo, ActivityEntry } from '@/lib/activity'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { logActivity, getActivity, activityLabel, timeAgo, type ActivityEntry } from '@/lib/activity'
+import { loadPreferences } from '@/lib/preferences'
 import CoverLetterModal from './CoverLetterModal'
 import FollowUpMessageModal from './FollowUpMessageModal'
 import MatchIntelligencePanel from './MatchIntelligencePanel'
 import ResumeROISection from './ResumeROISection'
 import TypewriterText from './TypewriterText'
-import { loadPreferences } from '@/lib/preferences'
 
-// ─── Config ──────────────────────────────────────────────────────────────────
+// ─── Config ───────────────────────────────────────────────────────────────────
 
 const STATUSES: Job['status'][] = ['New', 'Applied', 'Interviewing', 'Offer', 'Rejected', 'Skipped']
 
@@ -26,6 +30,15 @@ const STATUS_STYLE: Record<Job['status'], string> = {
   Skipped:      'text-zinc-500 bg-zinc-800/50 border-zinc-700/30',
 }
 
+const STATUS_TOAST: Record<string, string> = {
+  New:          'Moved back to New',
+  Applied:      'Marked as Applied ✓',
+  Interviewing: 'Moved to Interviewing',
+  Offer:        '🎉 Marked as Offer!',
+  Rejected:     'Marked as Rejected',
+  Skipped:      'Job skipped',
+}
+
 function scoreBadgeStyle(score: number) {
   if (score >= 9) return 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
   if (score >= 7) return 'bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20'
@@ -33,44 +46,54 @@ function scoreBadgeStyle(score: number) {
   return 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'
 }
 
-// ─── Props ───────────────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 
-interface Props {
-  job:            Job
-  onClose:        () => void
-  onStatusChange: (recordId: string, status: string) => Promise<void> | void
-}
+export default function JobDetailPage({ job: initialJob }: { job: Job }) {
+  const router = useRouter()
+  const [job, setJob] = useState(initialJob)
 
-export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) {
-  const [showCoverLetter,     setShowCoverLetter]     = useState(false)
-  const [showFollowUpModal,   setShowFollowUpModal]   = useState(false)
-  const [copiedCL,            setCopiedCL]            = useState(false)
-  const [showTimeline,        setShowTimeline]        = useState(false)
-  const [jobActivity,         setJobActivity]         = useState<ActivityEntry[]>([])
-  const [isSaving,            setIsSaving]            = useState(false)
-  const [isTrackingSaving,    setIsTrackingSaving]    = useState(false)
-  const [trackingNotes,       setTrackingNotes]       = useState(job.notes ?? '')
-  const [trackingAppliedDate, setTrackingAppliedDate] = useState(job.applied_date ?? '')
-  const [trackingFollowUpDate,setTrackingFollowUpDate]= useState(job.follow_up_date ?? '')
+  // Prev/Next nav list from sessionStorage (set by JobBoard before navigating)
+  const [navIds, setNavIds] = useState<string[] | null>(null)
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('qa_job_nav')
+      if (stored) {
+        const { ids, ts } = JSON.parse(stored)
+        if (Date.now() - ts < 30 * 60 * 1000) setNavIds(ids)
+      }
+    } catch { /* sessionStorage unavailable */ }
+  }, [])
+
+  const currentIdx = navIds ? navIds.indexOf(job.id) : -1
+  const prevId     = currentIdx > 0 ? navIds![currentIdx - 1] : null
+  const nextId     = currentIdx >= 0 && currentIdx < (navIds?.length ?? 0) - 1 ? navIds![currentIdx + 1] : null
+
+  // Modal state
+  const [showCoverLetter,   setShowCoverLetter]   = useState(false)
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false)
+  const [copiedCL,          setCopiedCL]          = useState(false)
+
+  // Saving state
+  const [isSaving,         setIsSaving]         = useState(false)
+  const [isTrackingSaving, setIsTrackingSaving] = useState(false)
+  const [showTimeline,     setShowTimeline]     = useState(false)
+  const [jobActivity,      setJobActivity]      = useState<ActivityEntry[]>([])
+
+  // Tracking form
+  const [trackingNotes,       setTrackingNotes]       = useState(job.notes           ?? '')
+  const [trackingAppliedDate, setTrackingAppliedDate] = useState(job.applied_date    ?? '')
+  const [trackingFollowUpDate,setTrackingFollowUpDate]= useState(job.follow_up_date  ?? '')
   const [trackingRecruiter,   setTrackingRecruiter]   = useState(job.recruiter_contact ?? '')
 
-  const panelRef = useRef<HTMLDivElement>(null)
-  useFocusTrap(panelRef)
-
-  // Reset form when switching to a different job
+  // Sync form when job ID changes (prev/next navigation)
   useEffect(() => {
-    setTrackingNotes(job.notes ?? '')
-    setTrackingAppliedDate(job.applied_date ?? '')
-    setTrackingFollowUpDate(job.follow_up_date ?? '')
-    setTrackingRecruiter(job.recruiter_contact ?? '')
-  }, [job.id])  // eslint-disable-line react-hooks/exhaustive-deps
+    setTrackingNotes(job.notes            ?? '')
+    setTrackingAppliedDate(job.applied_date    ?? '')
+    setTrackingFollowUpDate(job.follow_up_date  ?? '')
+    setTrackingRecruiter(job.recruiter_contact  ?? '')
+  }, [job.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const location  = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ')
-  const matches   = job.ai_resume_matches ? job.ai_resume_matches.split(',').map(s => s.trim()).filter(Boolean) : []
-  const gaps      = job.ai_gaps           ? job.ai_gaps.split(',').map(s => s.trim()).filter(Boolean) : []
-  const redFlags  = job.ai_red_flags      ? job.ai_red_flags.split(',').map(s => s.trim()).filter(Boolean) : []
-
-  // Load this job's activity entries
+  // Activity log for this job
   useEffect(() => {
     function load() {
       const all = getActivity().filter(e => e.jobId === job.id)
@@ -81,7 +104,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
     return () => window.removeEventListener('qa_activity', load)
   }, [job.id])
 
-  // Applied date — read from full activity log (not just the 5-entry slice)
   const appliedDateStr = useMemo(() => {
     const entry = getActivity().find(e => e.jobId === job.id && e.type === 'applied')
     if (!entry) return null
@@ -89,11 +111,23 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id, jobActivity])
 
+  const location = [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', ')
+  const matches  = job.ai_resume_matches ? job.ai_resume_matches.split(',').map(s => s.trim()).filter(Boolean) : []
+  const gaps     = job.ai_gaps           ? job.ai_gaps.split(',').map(s => s.trim()).filter(Boolean) : []
+  const redFlags = job.ai_red_flags      ? job.ai_red_flags.split(',').map(s => s.trim()).filter(Boolean) : []
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
   async function runStatusChange(status: string) {
     if (isSaving) return
     setIsSaving(true)
+    const prevStatus = job.status
     try {
-      await onStatusChange(job.id, status)
+      setJob(prev => ({ ...prev, status: status as Job['status'] }))
+      toast.success(STATUS_TOAST[status] ?? `Status → ${status}`, { duration: 2500 })
+      if (status !== 'Applied') {
+        logActivity({ type: 'status_change', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name, detail: status })
+      }
       if (status === 'Applied' && !trackingAppliedDate) {
         setTrackingAppliedDate(new Date().toISOString().split('T')[0])
       }
@@ -105,7 +139,14 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
           setTrackingFollowUpDate(d.toISOString().split('T')[0])
         }
       }
+      const res = await fetch('/api/jobs', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ recordId: job.id, status }),
+      })
+      if (!res.ok) throw new Error('save_failed')
     } catch {
+      setJob(prev => ({ ...prev, status: prevStatus }))
       toast.error('Could not save — please try again')
     } finally {
       setIsSaving(false)
@@ -117,12 +158,12 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
     setIsTrackingSaving(true)
     try {
       const res = await fetch('/api/jobs', {
-        method: 'PATCH',
+        method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recordId:          job.id,
           notes:             trackingNotes,
-          applied_date:      trackingAppliedDate || '',
+          applied_date:      trackingAppliedDate  || '',
           follow_up_date:    trackingFollowUpDate || '',
           recruiter_contact: trackingRecruiter,
         }),
@@ -151,7 +192,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
   async function handleSkip() {
     logActivity({ type: 'skipped', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name })
     await runStatusChange('Skipped')
-    onClose()
   }
 
   function handleViewCoverLetter() {
@@ -177,90 +217,117 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
     }
   }
 
+  // ── Render ──────────────────────────────────────────────────────────────────
+
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] z-40" onClick={onClose} />
+    <div className="px-6 py-8 max-w-5xl animate-fade-in">
 
-      {/* Panel */}
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="panel-title"
-        className="fixed right-0 top-0 h-full w-full max-w-[480px] bg-[#0e0e18] border-l border-[#1a1a26] z-50 flex flex-col"
-      >
+      {/* Breadcrumb + Prev/Next */}
+      <div className="flex items-center justify-between mb-6">
+        <Link
+          href="/jobs"
+          className="flex items-center gap-1.5 text-[13px] text-zinc-500 hover:text-zinc-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          All Jobs
+        </Link>
 
-        {/* Sticky header */}
-        <div className="flex-shrink-0 bg-[#0e0e18]/95 backdrop-blur-sm border-b border-[#1a1a26] px-6 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <h2 id="panel-title" className="text-[15px] font-semibold text-white leading-snug">{job.job_title}</h2>
-              <p className="text-[13px] text-zinc-500 mt-0.5">{job.employer_name}</p>
-            </div>
+        {navIds && (prevId || nextId) && (
+          <div className="flex items-center gap-1">
             <button
-              onClick={onClose}
-              aria-label="Close job detail panel"
-              className="flex-shrink-0 text-zinc-600 hover:text-zinc-300 hover:bg-[#1e1e2e] p-1.5 rounded-lg transition-all mt-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+              onClick={() => prevId && router.push(`/jobs/${prevId}`)}
+              disabled={!prevId}
+              aria-label="Previous job"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] text-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed bg-[#111118] border border-[#1f1f2e] rounded-lg hover:border-[#2e2e42] transition-all"
             >
-              <X className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
+              Prev
+            </button>
+            {currentIdx >= 0 && (
+              <span className="text-[11px] text-zinc-700 px-2 tabular-nums">
+                {currentIdx + 1} / {navIds.length}
+              </span>
+            )}
+            <button
+              onClick={() => nextId && router.push(`/jobs/${nextId}`)}
+              disabled={!nextId}
+              aria-label="Next job"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] text-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed bg-[#111118] border border-[#1f1f2e] rounded-lg hover:border-[#2e2e42] transition-all"
+            >
+              Next
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="flex flex-wrap gap-3 mt-3 text-[12px] text-zinc-600">
-            {location && <span>📍 {location}</span>}
-            {job.job_is_remote && <span className="text-emerald-600/80">🌐 Remote</span>}
-            {job.job_employment_type && <span>{job.job_employment_type}</span>}
-            {job.source && <span className="text-zinc-700">{job.source}</span>}
+        )}
+      </div>
+
+      {/* Hero card */}
+      <div className="bg-[#111118] border border-[#1f1f2e] rounded-2xl px-6 py-5 mb-6">
+        <div className="flex items-start gap-5">
+          <div className={`flex-shrink-0 w-16 h-16 rounded-xl flex flex-col items-center justify-center ${scoreBadgeStyle(job.ai_score)}`}>
+            <span className="text-2xl font-bold leading-none">{job.ai_score}</span>
+            <span className="text-[10px] opacity-50 mt-0.5">/10</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-[20px] font-semibold text-white leading-snug">{job.job_title}</h1>
+            <p className="text-[14px] text-zinc-400 font-medium mt-0.5">{job.employer_name}</p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[12px] text-zinc-600">
+              {location             && <span>📍 {location}</span>}
+              {job.job_is_remote    && <span className="text-emerald-600/80">🌐 Remote</span>}
+              {job.job_employment_type && <span>{job.job_employment_type}</span>}
+              {job.source           && <span className="text-zinc-700">{job.source}</span>}
+            </div>
           </div>
         </div>
 
-        {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-
-          {/* Score + Status */}
-          <div className="flex items-start gap-5">
-            <div className={`flex-shrink-0 w-16 h-16 rounded-xl flex flex-col items-center justify-center ${scoreBadgeStyle(job.ai_score)}`}>
-              <span className="text-2xl font-bold leading-none">{job.ai_score}</span>
-              <span className="text-[10px] opacity-50 mt-0.5">/10</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-zinc-600 uppercase tracking-wider font-medium mb-2">Status</p>
-              <div className="flex flex-wrap gap-1.5">
-                {STATUSES.filter(s => s !== 'Rejected' && s !== 'Skipped').map(s => (
-                  <button
-                    key={s}
-                    disabled={isSaving}
-                    onClick={() => runStatusChange(s)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
-                      job.status === s ? `${STATUS_STYLE[s]} scale-[1.05]` : 'bg-transparent border-[#252535] text-zinc-600 hover:border-[#3a3a4e] hover:text-zinc-400'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-                <span className="w-px h-5 bg-[#252535] self-center mx-0.5" />
-                {(['Rejected', 'Skipped'] as Job['status'][]).map(s => (
-                  <button
-                    key={s}
-                    disabled={isSaving}
-                    onClick={() => runStatusChange(s)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
-                      job.status === s ? `${STATUS_STYLE[s]} scale-[1.05]` : 'bg-transparent border-[#252535] text-zinc-600 hover:border-[#3a3a4e] hover:text-zinc-400'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-              {/* Applied date */}
-              <p className="text-[11px] mt-2">
-                <span className="text-zinc-700">Applied: </span>
-                <span className={appliedDateStr ? 'text-zinc-400' : 'text-zinc-700 italic'}>
-                  {appliedDateStr ?? 'Not applied yet'}
-                </span>
-              </p>
-            </div>
+        {/* Status */}
+        <div className="mt-4 pt-4 border-t border-[#1a1a26]">
+          <p className="text-[11px] text-zinc-600 uppercase tracking-wider font-medium mb-2">Status</p>
+          <div className="flex flex-wrap gap-1.5">
+            {STATUSES.filter(s => s !== 'Rejected' && s !== 'Skipped').map(s => (
+              <button
+                key={s}
+                disabled={isSaving}
+                onClick={() => runStatusChange(s)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
+                  job.status === s
+                    ? `${STATUS_STYLE[s]} scale-[1.05]`
+                    : 'bg-transparent border-[#252535] text-zinc-600 hover:border-[#3a3a4e] hover:text-zinc-400'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+            <span className="w-px h-5 bg-[#252535] self-center mx-0.5" />
+            {(['Rejected', 'Skipped'] as Job['status'][]).map(s => (
+              <button
+                key={s}
+                disabled={isSaving}
+                onClick={() => runStatusChange(s)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
+                  job.status === s
+                    ? `${STATUS_STYLE[s]} scale-[1.05]`
+                    : 'bg-transparent border-[#252535] text-zinc-600 hover:border-[#3a3a4e] hover:text-zinc-400'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
           </div>
+          <p className="text-[11px] mt-2">
+            <span className="text-zinc-700">Applied: </span>
+            <span className={appliedDateStr ? 'text-zinc-400' : 'text-zinc-700 italic'}>
+              {appliedDateStr ?? 'Not applied yet'}
+            </span>
+          </p>
+        </div>
+      </div>
+
+      {/* Two-column workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* ── Left: actions + tracking + activity ─────────────────────────── */}
+        <div className="space-y-5">
 
           {/* Primary actions */}
           <section className="space-y-2">
@@ -274,7 +341,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
                 Open Job Posting
               </button>
             )}
-
             <div className="flex gap-2">
               {job.status !== 'Applied' && job.status !== 'Interviewing' && job.status !== 'Offer' && (
                 <button
@@ -292,28 +358,27 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
                   disabled={isSaving}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#14141e] border border-[#1f1f2e] text-zinc-600 hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/5 transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30"
                 >
-                  {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Skip'}
+                  {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                  Skip
                 </button>
               )}
             </div>
           </section>
 
-          {/* Cover letter actions */}
+          {/* Cover letter */}
           <section className="flex gap-2">
             {job.cover_letter_url ? (
               <>
                 <button
                   onClick={handleViewCoverLetter}
-                  disabled={isSaving}
-                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 py-2 rounded-xl text-[12px] font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 py-2 rounded-xl text-[12px] font-medium transition-all"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   View Cover Letter
                 </button>
                 <button
                   onClick={handleCopyCoverLetter}
-                  disabled={isSaving}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium bg-[#1a1a26] hover:bg-[#20202e] border border-[#2a2a3e] text-zinc-400 hover:text-zinc-200 transition-all"
                 >
                   {copiedCL ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   {copiedCL ? 'Copied!' : 'Copy'}
@@ -327,7 +392,7 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
             )}
           </section>
 
-          {/* Follow-up message generator — visible once applied/interviewing/offer */}
+          {/* Follow-up message generator */}
           {(job.status === 'Applied' || job.status === 'Interviewing' || job.status === 'Offer') && (
             <section>
               <button
@@ -345,7 +410,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
           <section>
             <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-3">Tracking Details</h3>
             <div className="space-y-3">
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] text-zinc-600 mb-1.5 block">Applied Date</label>
@@ -366,7 +430,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
                   />
                 </div>
               </div>
-
               <div>
                 <label className="text-[11px] text-zinc-600 mb-1.5 block">Recruiter / Contact</label>
                 <input
@@ -377,7 +440,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
                   className="w-full bg-[#0d0d14] border border-[#1f1f2e] rounded-lg px-3 py-2 text-[12px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20"
                 />
               </div>
-
               <div>
                 <label className="text-[11px] text-zinc-600 mb-1.5 block">Notes</label>
                 <textarea
@@ -388,7 +450,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
                   className="w-full bg-[#0d0d14] border border-[#1f1f2e] rounded-lg px-3 py-2 text-[12px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/40 focus:ring-1 focus:ring-indigo-500/20 resize-none leading-relaxed"
                 />
               </div>
-
               <button
                 onClick={handleSaveTracking}
                 disabled={isTrackingSaving}
@@ -399,60 +460,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
               </button>
             </div>
           </section>
-
-          {/* AI Match Intelligence — Phase 4 */}
-          <MatchIntelligencePanel job={job} />
-
-          {/* Resume ROI — Phase 6-E */}
-          <ResumeROISection job={job} />
-
-          {/* AI Assessment */}
-          {job.ai_reasoning && (
-            <section>
-              <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">AI Assessment</h3>
-              <p className="text-[13px] text-zinc-300 leading-relaxed">
-                <TypewriterText text={job.ai_reasoning} />
-              </p>
-            </section>
-          )}
-
-          {/* Resume Matches */}
-          {matches.length > 0 && (
-            <section>
-              <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">
-                Resume Matches · {matches.length}
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {matches.map((m, i) => (
-                  <span key={i} className="px-2 py-0.5 bg-emerald-500/[0.07] text-emerald-400 text-[12px] rounded-md border border-emerald-500/15">{m}</span>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Gaps */}
-          {gaps.length > 0 && (
-            <section>
-              <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Gaps</h3>
-              <div className="flex flex-wrap gap-1.5">
-                {gaps.map((g, i) => (
-                  <span key={i} className="px-2 py-0.5 bg-amber-500/[0.07] text-amber-400 text-[12px] rounded-md border border-amber-500/15">{g}</span>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Red Flags */}
-          {redFlags.length > 0 && (
-            <section>
-              <h3 className="text-[11px] font-semibold text-red-500/60 uppercase tracking-wider mb-2">⚠ Red Flags</h3>
-              <div className="flex flex-wrap gap-1.5">
-                {redFlags.map((r, i) => (
-                  <span key={i} className="px-2 py-0.5 bg-red-500/[0.07] text-red-400 text-[12px] rounded-md border border-red-500/15">{r}</span>
-                ))}
-              </div>
-            </section>
-          )}
 
           {/* Activity timeline */}
           <section>
@@ -481,6 +488,58 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
           </section>
 
         </div>
+
+        {/* ── Right: AI analysis ───────────────────────────────────────────── */}
+        <div className="space-y-5">
+
+          <MatchIntelligencePanel job={job} />
+          <ResumeROISection job={job} />
+
+          {job.ai_reasoning && (
+            <section>
+              <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">AI Assessment</h3>
+              <p className="text-[13px] text-zinc-300 leading-relaxed">
+                <TypewriterText text={job.ai_reasoning} />
+              </p>
+            </section>
+          )}
+
+          {matches.length > 0 && (
+            <section>
+              <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">
+                Resume Matches · {matches.length}
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {matches.map((m, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-emerald-500/[0.07] text-emerald-400 text-[12px] rounded-md border border-emerald-500/15">{m}</span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {gaps.length > 0 && (
+            <section>
+              <h3 className="text-[11px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">Gaps</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {gaps.map((g, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-amber-500/[0.07] text-amber-400 text-[12px] rounded-md border border-amber-500/15">{g}</span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {redFlags.length > 0 && (
+            <section>
+              <h3 className="text-[11px] font-semibold text-red-500/60 uppercase tracking-wider mb-2">⚠ Red Flags</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {redFlags.map((r, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-red-500/[0.07] text-red-400 text-[12px] rounded-md border border-red-500/15">{r}</span>
+                ))}
+              </div>
+            </section>
+          )}
+
+        </div>
       </div>
 
       {showCoverLetter && job.cover_letter_url && (
@@ -500,6 +559,6 @@ export default function JobDetailPanel({ job, onClose, onStatusChange }: Props) 
           onClose={() => setShowFollowUpModal(false)}
         />
       )}
-    </>
+    </div>
   )
 }

@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
 import { logActivity } from '@/lib/activity'
 import { useJobSearch } from '@/hooks/useJobSearch'
 import StatsBar from './StatsBar'
 import JobCard from './JobCard'
-import JobDetailPanel from './JobDetailPanel'
 import SearchFilter from './SearchFilter'
 
 const STATUS_TOAST: Record<string, string> = {
@@ -25,13 +25,13 @@ interface Props {
 }
 
 export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props) {
-  const [jobs,        setJobs]        = useState<Job[]>(initialJobs)
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null)
-  const [focusedIdx,  setFocusedIdx]  = useState<number>(-1)
+  const router = useRouter()
+  const [jobs,       setJobs]       = useState<Job[]>(initialJobs)
+  const [focusedIdx, setFocusedIdx] = useState<number>(-1)
 
   const { filtered, query, setQuery, filters, setFilters, activeCount, clearAll } = useJobSearch(jobs)
 
-  // j/k/Enter/Esc keyboard nav
+  // j/k/Enter keyboard nav
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName
@@ -46,24 +46,27 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
         setFocusedIdx(prev => Math.max(prev - 1, 0))
       } else if (e.key === 'Enter' && focusedIdx >= 0 && filtered[focusedIdx]) {
         e.preventDefault()
-        setSelectedJob(filtered[focusedIdx])
+        const job = filtered[focusedIdx]
+        try {
+          sessionStorage.setItem('qa_job_nav', JSON.stringify({
+            ids: filtered.map(j => j.id),
+            ts:  Date.now(),
+          }))
+        } catch { /* sessionStorage unavailable */ }
+        router.push(`/jobs/${job.id}`)
       } else if (e.key === 'Escape') {
-        setSelectedJob(null)
         setFocusedIdx(-1)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [filtered, focusedIdx])
+  }, [filtered, focusedIdx, router])
 
   useEffect(() => { setFocusedIdx(-1) }, [query, filters])
 
   const handleStatusChange = useCallback(async (recordId: string, status: string) => {
     const job = jobs.find(j => j.id === recordId)
     setJobs(prev => prev.map(j => j.id === recordId ? { ...j, status: status as Job['status'] } : j))
-    if (selectedJob?.id === recordId) {
-      setSelectedJob(prev => prev ? { ...prev, status: status as Job['status'] } : null)
-    }
     toast.success(STATUS_TOAST[status] ?? `Status → ${status}`, { duration: 2500 })
     if (job && status !== 'Applied') {
       logActivity({ type: 'status_change', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name, detail: status })
@@ -74,7 +77,7 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
       body: JSON.stringify({ recordId, status }),
     })
     if (!res.ok) throw new Error('save_failed')
-  }, [jobs, selectedJob])
+  }, [jobs])
 
   return (
     <div>
@@ -94,7 +97,6 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
 
       {/* Empty states */}
       {jobs.length === 0 ? (
-        /* System-level: no jobs in Airtable at all */
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-14 h-14 rounded-2xl bg-[#111118] border border-[#1f1f2e] flex items-center justify-center mb-4">
             <span className="text-2xl">🤖</span>
@@ -111,7 +113,6 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
           </a>
         </div>
       ) : filtered.length === 0 ? (
-        /* Filter-level: jobs exist but current filters match nothing */
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-12 h-12 rounded-2xl bg-[#111118] border border-[#1f1f2e] flex items-center justify-center mb-4">
             <span className="text-2xl">🔍</span>
@@ -139,21 +140,13 @@ export default function JobBoard({ jobs: initialJobs, showSearch = true }: Props
               <div key={job.id} className={focusedIdx === i ? 'ring-1 ring-indigo-500/40 rounded-xl' : ''}>
                 <JobCard
                   job={job}
-                  onSelect={j => { setSelectedJob(j); setFocusedIdx(i) }}
+                  navIds={filtered.map(j => j.id)}
                   onStatusChange={handleStatusChange}
                 />
               </div>
             ))}
           </div>
         </>
-      )}
-
-      {selectedJob && (
-        <JobDetailPanel
-          job={selectedJob}
-          onClose={() => setSelectedJob(null)}
-          onStatusChange={handleStatusChange}
-        />
       )}
     </div>
   )

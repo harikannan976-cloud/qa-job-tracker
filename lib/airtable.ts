@@ -86,6 +86,42 @@ export async function fetchJobs(): Promise<Job[]> {
   return jobs
 }
 
+export async function fetchJobById(id: string): Promise<Job | null> {
+  const res = await fetch(`${BASE_URL}/${id}`, { headers, cache: 'no-store' })
+  if (!res.ok) return null
+  const record = await res.json()
+  const f = record.fields
+  if (!f.job_id) return null
+  return {
+    id:                 record.id,
+    job_id:             f.job_id             ?? '',
+    job_title:          f.job_title           ?? '',
+    employer_name:      f.employer_name       ?? '',
+    job_city:           f.job_city            ?? '',
+    job_state:          f.job_state           ?? '',
+    job_country:        f.job_country         ?? '',
+    job_is_remote:      f.job_is_remote       ?? false,
+    job_apply_link:     f.job_apply_link      ?? '',
+    job_publisher:      f.job_publisher       ?? '',
+    job_posted_at:      f.job_posted_at       ?? '',
+    job_employment_type:f.job_employment_type ?? '',
+    source:             f.source              ?? '',
+    ai_score:           f.ai_score            ?? 0,
+    ai_reasoning:       f.ai_reasoning        ?? '',
+    ai_resume_matches:  f.ai_resume_matches   ?? '',
+    ai_gaps:            f.ai_gaps             ?? '',
+    ai_should_apply:    f.ai_should_apply     ?? false,
+    ai_red_flags:       f.ai_red_flags        ?? '',
+    cover_letter_url:   f.cover_letter_url    ?? '',
+    cover_letter_text:  f.cover_letter_text   ?? '',
+    status:             f.status              ?? 'New',
+    notes:              f.notes               ?? '',
+    applied_date:       f.applied_date        ?? '',
+    follow_up_date:     f.follow_up_date      ?? '',
+    recruiter_contact:  f.recruiter_contact   ?? '',
+  }
+}
+
 export async function updateJobStatus(recordId: string, status: string): Promise<void> {
   await fetch(`${BASE_URL}/${recordId}`, {
     method: 'PATCH',

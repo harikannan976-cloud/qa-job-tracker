@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ExternalLink, FileText, X, Loader2 } from 'lucide-react'
 import { Job } from '@/lib/airtable'
 import { logActivity } from '@/lib/activity'
@@ -8,7 +9,7 @@ import { loadPreferences } from '@/lib/preferences'
 
 interface Props {
   job:            Job
-  onSelect:       (job: Job) => void
+  navIds:         string[]
   onStatusChange: (id: string, status: string) => Promise<void> | void
 }
 
@@ -31,7 +32,8 @@ function statusStyle(status: Job['status']) {
   return map[status] ?? map.Skipped
 }
 
-export default function JobCard({ job, onSelect, onStatusChange }: Props) {
+export default function JobCard({ job, navIds, onStatusChange }: Props) {
+  const router = useRouter()
   const [savingApply, setSavingApply] = useState(false)
   const [savingSkip,  setSavingSkip]  = useState(false)
 
@@ -66,6 +68,13 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
 
   const hasIndicators = locationMatch || matchedSkills.length > 0 || belowThreshold || excludedFound.length > 0
 
+  function navigateToDetail() {
+    try {
+      sessionStorage.setItem('qa_job_nav', JSON.stringify({ ids: navIds, ts: Date.now() }))
+    } catch { /* sessionStorage unavailable */ }
+    router.push(`/jobs/${job.id}`)
+  }
+
   async function handleApply(e: React.MouseEvent) {
     e.stopPropagation()
     if (!job.job_apply_link || savingApply) return
@@ -89,11 +98,11 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
     <div
       role="article"
       tabIndex={0}
-      onClick={() => onSelect(job)}
+      onClick={navigateToDetail}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          onSelect(job)
+          navigateToDetail()
         }
       }}
       className={`group relative bg-[#111118] hover:bg-[#161620] border border-[#1f1f2e] hover:border-[#2e2e42] rounded-xl p-5 cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 ${
@@ -165,7 +174,7 @@ export default function JobCard({ job, onSelect, onStatusChange }: Props) {
           )}
           {job.cover_letter_url && (
             <button
-              onClick={e => { e.stopPropagation(); onSelect(job) }}
+              onClick={e => { e.stopPropagation(); navigateToDetail() }}
               className="flex items-center gap-1.5 text-[12px] bg-[#1e1e2e] hover:bg-[#252538] border border-[#2e2e44] text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
             >
               <FileText className="w-3 h-3" />
