@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   DndContext, DragOverlay, pointerWithin,
   type DragStartEvent, type DragEndEvent,
@@ -11,7 +12,6 @@ import { toast } from 'sonner'
 import { Job } from '@/lib/airtable'
 import { logActivity } from '@/lib/activity'
 import { ExternalLink, X, RotateCcw, Loader2 } from 'lucide-react'
-import JobDetailPanel from './JobDetailPanel'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -104,12 +104,12 @@ function CardContent({ job, dim = false, skipped = false }: { job: Job; dim?: bo
 
 // ─── Draggable card ───────────────────────────────────────────────────────────
 
-function KanbanCard({ job, onSelect, onStatusChange, isSaving = false }: {
+function KanbanCard({ job, onStatusChange, isSaving = false }: {
   job: Job
-  onSelect: (j: Job) => void
   onStatusChange: (id: string, status: string) => Promise<void> | void
   isSaving?: boolean
 }) {
+  const router = useRouter()
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: job.id,
     data: { job },
@@ -120,8 +120,8 @@ function KanbanCard({ job, onSelect, onStatusChange, isSaving = false }: {
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className="touch-none group/card">
       <div
-        className="cursor-grab active:cursor-grabbing relative"
-        onClick={e => { e.stopPropagation(); if (!isDragging) onSelect(job) }}
+        className="cursor-pointer relative"
+        onClick={e => { e.stopPropagation(); if (!isDragging) router.push(`/jobs/${job.id}?from=pipeline`) }}
       >
         <CardContent job={job} dim={isDragging} skipped={job.status === 'Skipped'} />
         {isSaving && !isDragging && (
@@ -184,11 +184,10 @@ function KanbanCard({ job, onSelect, onStatusChange, isSaving = false }: {
 // ─── Droppable column ─────────────────────────────────────────────────────────
 
 function KanbanColumn({
-  status, label, color, dot, muted, jobs, isOver, savingId, onSelect, onStatusChange,
+  status, label, color, dot, muted, jobs, isOver, savingId, onStatusChange,
 }: {
   status: string; label: string; color: string; dot: string; muted?: boolean
   jobs: Job[]; isOver: boolean; savingId: string | null
-  onSelect: (j: Job) => void
   onStatusChange: (id: string, status: string) => Promise<void> | void
 }) {
   const { setNodeRef } = useDroppable({ id: status })
@@ -219,7 +218,7 @@ function KanbanColumn({
           </div>
         )}
         {jobs.map(job => (
-          <KanbanCard key={job.id} job={job} onSelect={onSelect} onStatusChange={onStatusChange} isSaving={savingId === job.id} />
+          <KanbanCard key={job.id} job={job} onStatusChange={onStatusChange} isSaving={savingId === job.id} />
         ))}
       </div>
     </div>
@@ -232,7 +231,6 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
   const [jobs,        setJobs]        = useState<Job[]>(initialJobs)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [overId,      setOverId]      = useState<string | null>(null)
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [savingId,    setSavingId]    = useState<string | null>(null)
 
   const activeJob = activeJobId ? jobs.find(j => j.id === activeJobId) ?? null : null
@@ -240,7 +238,6 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
   const handleStatusChange = useCallback(async (recordId: string, status: string): Promise<void> => {
     const job = jobs.find(j => j.id === recordId)
     setJobs(prev => prev.map(j => j.id === recordId ? { ...j, status: status as Job['status'] } : j))
-    if (selectedJob?.id === recordId) setSelectedJob(prev => prev ? { ...prev, status: status as Job['status'] } : null)
     toast.success(STATUS_TOAST[status] ?? `Moved to ${status}`, { duration: 2000 })
     if (job) {
       logActivity({ type: 'status_change', jobId: job.id, jobTitle: job.job_title, employer: job.employer_name, detail: status })
@@ -254,7 +251,7 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
       toast.error('Status update failed — please try again')
       throw new Error('save_failed')
     }
-  }, [jobs, selectedJob])
+  }, [jobs])
 
   function onDragStart(e: DragStartEvent) {
     setActiveJobId(e.active.id as string)
@@ -306,7 +303,6 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
                 jobs={columnJobs(col.status)}
                 isOver={overId === col.status}
                 savingId={savingId}
-                onSelect={setSelectedJob}
                 onStatusChange={handleStatusChange}
                 muted={col.muted}
               />
@@ -323,13 +319,6 @@ export default function KanbanBoard({ jobs: initialJobs }: { jobs: Job[] }) {
         </DragOverlay>
       </DndContext>
 
-      {selectedJob && (
-        <JobDetailPanel
-          job={selectedJob}
-          onClose={() => setSelectedJob(null)}
-          onStatusChange={handleStatusChange}
-        />
-      )}
     </>
   )
 }
