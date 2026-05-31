@@ -107,6 +107,7 @@ export function buildTodaysFocus(jobs: Job[]): ActionItem[] {
   const seen = new Set<string>()
   const out: ActionItem[] = []
   for (const item of all) {
+    if (item.job.status !== 'New') continue
     if (!seen.has(item.job.id)) {
       seen.add(item.job.id)
       out.push(item)
