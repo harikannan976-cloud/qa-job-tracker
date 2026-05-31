@@ -145,7 +145,7 @@ function KanbanCard({ job, onStatusChange, isSaving = false }: {
                 <RotateCcw className="w-2.5 h-2.5" />
                 Restore
               </button>
-            ) : (
+            ) : ['New', 'Applied'].includes(job.status) ? (
               <>
                 {job.job_apply_link && job.status !== 'Applied' && (
                   <button
@@ -174,7 +174,7 @@ function KanbanCard({ job, onStatusChange, isSaving = false }: {
                   <X className="w-2.5 h-2.5" />
                 </button>
               </>
-            )}
+            ) : null}
           </div>
         )}
       </div>
