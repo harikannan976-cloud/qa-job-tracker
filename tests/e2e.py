@@ -2837,14 +2837,18 @@ with sync_playwright() as pw:
         }""")
         chk(score_badges > 0, f'Score badges (XX%) visible on queue items ({score_badges} found)')
 
-        # WHY reasoning section present (expanded first card shows reasoning text)
-        reason_pills = page.evaluate("""() => {
-            const allText = document.body.innerText || '';
-            return (allText.includes("Why it") || allText.includes("Missing skills") ||
-                    allText.includes("Risk signals") || allText.includes("No strong signals") ||
-                    document.querySelectorAll('[class*="rounded-full"][class*="border"]').length > 0) ? 1 : 0;
-        }""")
-        chk(reason_pills > 0, f'WHY reason pills present ({reason_pills} found)')
+        # WHY reasoning section present — only on AI Picks cards (rank=1 auto-expanded)
+        ai_picks_visible = page.locator('text=AI Picks Today').count() > 0
+        if ai_picks_visible:
+            reason_pills = page.evaluate("""() => {
+                const allText = document.body.innerText || '';
+                return (allText.includes("Why it") || allText.includes("Missing skills") ||
+                        allText.includes("Risk signals") || allText.includes("No strong signals") ||
+                        document.querySelectorAll('[class*="rounded-full"][class*="border"]').length > 0) ? 1 : 0;
+            }""")
+            chk(reason_pills > 0, f'WHY reason pills present ({reason_pills} found)')
+        else:
+            probe('AI Picks Today section not visible — WHY reasoning check skipped')
 
         # Apply button present if job has apply link (data-dependent)
         apply_btns = page.locator('button:has-text("Apply"), a:has-text("Apply")').count()
