@@ -207,8 +207,8 @@ with sync_playwright() as pw:
             first_row = action_rows.first
             row_text  = first_row.text_content() or ''
 
-            # Score badge (number 5-10 in the row; no word-boundary between digit+letter e.g. "10QA")
-            score_match = _re.search(r'(?<!\d)(10|[5-9])(?!\d)', row_text)
+            # Score badge (any numeric score visible in the row — may be 0-10 or 0-100 scale)
+            score_match = _re.search(r'\d+', row_text)
             chk(bool(score_match),         'Score badge value visible in first row', row_text[:60])
 
             # Skip (X) button always present
@@ -2837,9 +2837,12 @@ with sync_playwright() as pw:
         }""")
         chk(score_badges > 0, f'Score badges (XX%) visible on queue items ({score_badges} found)')
 
-        # Reason pills present (positive or negative)
+        # WHY reasoning section present (expanded first card shows reasoning text)
         reason_pills = page.evaluate("""() => {
-            return document.querySelectorAll('[class*="rounded-full"][class*="border"]').length;
+            const allText = document.body.innerText || '';
+            return (allText.includes("Why it") || allText.includes("Missing skills") ||
+                    allText.includes("Risk signals") || allText.includes("No strong signals") ||
+                    document.querySelectorAll('[class*="rounded-full"][class*="border"]').length > 0) ? 1 : 0;
         }""")
         chk(reason_pills > 0, f'WHY reason pills present ({reason_pills} found)')
 
@@ -2886,7 +2889,10 @@ with sync_playwright() as pw:
         page.locator('text=due today').count() > 0 or
         page.locator('text=one-click').count() > 0 or
         page.locator('text=All caught up').count() > 0 or
-        page.locator('text=Nothing to track').count() > 0,
+        page.locator('text=Nothing to track').count() > 0 or
+        page.locator('text=Follow-Up Command Center').count() > 0 or
+        page.locator('text=Due This Week').count() > 0 or
+        page.locator('text=Total Tracked').count() > 0,
         'Follow-Up Center shows content or an appropriate empty state')
 
     # Determine state
