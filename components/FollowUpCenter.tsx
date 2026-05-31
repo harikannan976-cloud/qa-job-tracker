@@ -101,12 +101,16 @@ export default function FollowUpCenter({ jobs }: Props) {
               {hasItems ? (
                 <div className="space-y-1.5">
                   {bucketJobs.slice(0, 3).map(job => (
-                    <div key={job.id} className="flex items-center gap-2 min-w-0">
+                    <Link
+                      key={job.id}
+                      href={`/jobs/${job.id}?from=follow-up`}
+                      className="flex items-center gap-2 min-w-0 group"
+                    >
                       <span className={`flex-shrink-0 w-1 h-1 rounded-full ${s.dot}`} />
-                      <span className="text-[11px] text-zinc-500 truncate">
+                      <span className="text-[11px] text-zinc-500 group-hover:text-zinc-300 truncate transition-colors">
                         {job.job_title} · {job.employer_name}
                       </span>
-                    </div>
+                    </Link>
                   ))}
                   {bucketJobs.length > 3 && (
                     <p className="text-[10px] text-zinc-700 pl-3">

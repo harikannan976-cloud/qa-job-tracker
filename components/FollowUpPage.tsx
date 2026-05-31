@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import {
   AlertCircle, Clock, Calendar, MessageSquare,
   Check, CalendarDays, CheckCircle2, type LucideIcon,
@@ -122,7 +123,13 @@ function FollowUpItem({
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <p className="text-[13px] font-semibold text-zinc-200 truncate">{job.job_title}</p>
+            <Link
+              href={`/jobs/${job.id}?from=follow-up`}
+              className="text-[13px] font-semibold text-zinc-200 hover:text-white truncate transition-colors"
+              onClick={e => e.stopPropagation()}
+            >
+              {job.job_title}
+            </Link>
             <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${statusStyle(job.status)}`}>
               {job.status}
             </span>
