@@ -49,56 +49,64 @@ export default function DashboardTabs({ jobs, actionItems, total }: Props) {
         ))}
       </div>
 
-      {/* Tab content */}
-      {active === 'focus' && (
-        <TodaysFocus jobs={jobs} />
-      )}
+      {/* Tab content — scrollable */}
+      <div className="overflow-y-auto max-h-[calc(100vh-22rem)] pr-1
+                      [&::-webkit-scrollbar]:w-1
+                      [&::-webkit-scrollbar-track]:bg-transparent
+                      [&::-webkit-scrollbar-thumb]:bg-[#2a2a3a]
+                      [&::-webkit-scrollbar-thumb]:rounded-full">
 
-      {active === 'attention' && (
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-[13px] font-semibold text-zinc-200">Needs Attention</p>
-              <p className="text-[11px] text-zinc-600 mt-0.5">New · score ≥ 7 · awaiting action</p>
-            </div>
-            <Link
-              href="/jobs"
-              className="flex items-center gap-1 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded"
-            >
-              View all <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-          {total === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 bg-[#111118] border border-[#1a1a26] rounded-xl text-center">
-              <div className="w-10 h-10 rounded-xl bg-[#16161e] border border-[#252535] flex items-center justify-center mb-3">
-                <Sparkles className="w-4 h-4 text-zinc-700" />
+        {active === 'focus' && (
+          <TodaysFocus jobs={jobs} />
+        )}
+
+        {active === 'attention' && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-[13px] font-semibold text-zinc-200">Needs Attention</p>
+                <p className="text-[11px] text-zinc-600 mt-0.5">New · score ≥ 7 · awaiting action</p>
               </div>
-              <p className="text-[13px] font-medium text-zinc-400 mb-1">No jobs yet</p>
-              <p className="text-[12px] text-zinc-600 mb-4 max-w-[200px] leading-relaxed">
-                Run the automation to fetch and score jobs
-              </p>
               <Link
-                href="/automation"
-                className="text-[12px] text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
+                href="/jobs"
+                className="flex items-center gap-1 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded"
               >
-                Go to Automation →
+                View all <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
-          ) : (
-            <DashboardActionItems initialJobs={actionItems} />
-          )}
-        </section>
-      )}
+            {total === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 bg-[#111118] border border-[#1a1a26] rounded-xl text-center">
+                <div className="w-10 h-10 rounded-xl bg-[#16161e] border border-[#252535] flex items-center justify-center mb-3">
+                  <Sparkles className="w-4 h-4 text-zinc-700" />
+                </div>
+                <p className="text-[13px] font-medium text-zinc-400 mb-1">No jobs yet</p>
+                <p className="text-[12px] text-zinc-600 mb-4 max-w-[200px] leading-relaxed">
+                  Run the automation to fetch and score jobs
+                </p>
+                <Link
+                  href="/automation"
+                  className="text-[12px] text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
+                >
+                  Go to Automation →
+                </Link>
+              </div>
+            ) : (
+              <DashboardActionItems initialJobs={actionItems} />
+            )}
+          </section>
+        )}
 
-      {active === 'opportunities' && (
-        <InterviewTracker jobs={jobs} />
-      )}
+        {active === 'opportunities' && (
+          <InterviewTracker jobs={jobs} />
+        )}
 
-      {active === 'activity' && (
-        <div className="bg-[#0d0d14] border border-[#1a1a26] rounded-xl p-4 min-h-[300px]">
-          <ActivityFeed limit={50} />
-        </div>
-      )}
+        {active === 'activity' && (
+          <div className="bg-[#0d0d14] border border-[#1a1a26] rounded-xl p-4 min-h-[200px]">
+            <ActivityFeed limit={50} />
+          </div>
+        )}
+
+      </div>
     </div>
   )
 }
