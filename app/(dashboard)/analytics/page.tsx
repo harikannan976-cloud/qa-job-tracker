@@ -72,7 +72,7 @@ async function AnalyticsContent() {
 
 export default function AnalyticsPage() {
   return (
-    <div className="px-6 py-8 max-w-5xl animate-fade-in">
+    <div className="px-6 py-8 animate-fade-in">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-white tracking-tight">Analytics</h1>
         <p className="text-[13px] text-zinc-500 mt-1">

@@ -84,7 +84,7 @@ async function InsightsData() {
 
 export default function InsightsPage() {
   return (
-    <div className="px-6 py-8 max-w-5xl animate-fade-in">
+    <div className="px-6 py-8 animate-fade-in">
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-2">
           <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />

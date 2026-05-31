@@ -54,7 +54,7 @@ async function FollowUpData() {
 
 export default function FollowUpCenterPage() {
   return (
-    <div className="px-6 py-8 max-w-4xl animate-fade-in">
+    <div className="px-6 py-8 animate-fade-in">
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-2">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />

@@ -220,7 +220,7 @@ export default function JobDetailPage({ job: initialJob }: { job: Job }) {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="px-6 py-8 max-w-5xl animate-fade-in">
+    <div className="px-6 py-8 animate-fade-in">
 
       {/* Breadcrumb + Prev/Next */}
       <div className="flex items-center justify-between mb-6">

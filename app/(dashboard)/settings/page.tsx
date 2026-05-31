@@ -218,7 +218,7 @@ export default function SettingsPage() {
   const isDirty = JSON.stringify(draft) !== JSON.stringify(prefs)
 
   return (
-    <div className="px-6 py-8 max-w-3xl space-y-6">
+    <div className="px-6 py-8 max-w-3xl mx-auto space-y-6">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">

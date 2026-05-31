@@ -1,6 +1,6 @@
 export default function HowItWorksPage() {
   return (
-    <div className="px-6 py-8 max-w-3xl">
+    <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-10">
         <h1 className="text-2xl font-semibold text-white tracking-tight">How It Works</h1>
         <p className="text-[13px] text-zinc-500 mt-1">
