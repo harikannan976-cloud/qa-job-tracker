@@ -136,7 +136,7 @@ async function DashboardContent() {
                 Recent Activity
               </h2>
             </div>
-            <ActivityFeed limit={10} />
+            <ActivityFeed limit={50} />
           </div>
         </div>
 

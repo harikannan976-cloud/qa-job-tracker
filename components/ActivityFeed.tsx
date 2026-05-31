@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { Activity } from 'lucide-react'
 import { ActivityEntry, activityLabel, timeAgo } from '@/lib/activity'
 
@@ -13,7 +14,7 @@ const DOT: Record<string, string> = {
   skipped:             'bg-zinc-600',
 }
 
-export default function ActivityFeed({ limit = 8 }: { limit?: number }) {
+export default function ActivityFeed({ limit = 20 }: { limit?: number }) {
   const [entries, setEntries] = useState<ActivityEntry[]>([])
 
   useEffect(() => {
@@ -43,13 +44,21 @@ export default function ActivityFeed({ limit = 8 }: { limit?: number }) {
   }
 
   return (
-    <div className="space-y-0.5">
+    <div className="overflow-y-auto max-h-[420px] space-y-0.5 pr-0.5
+                    [&::-webkit-scrollbar]:w-1
+                    [&::-webkit-scrollbar-track]:bg-transparent
+                    [&::-webkit-scrollbar-thumb]:bg-[#2a2a3a]
+                    [&::-webkit-scrollbar-thumb]:rounded-full">
       {entries.map(e => (
-        <div key={e.id} className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-[#111118] transition-colors">
+        <Link
+          key={e.id}
+          href={`/jobs/${e.jobId}`}
+          className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-[#111118] transition-colors group"
+        >
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-px ${DOT[e.type] ?? 'bg-zinc-600'}`} />
-          <span className="flex-1 text-[12px] text-zinc-400 truncate min-w-0">{activityLabel(e)}</span>
+          <span className="flex-1 text-[12px] text-zinc-400 group-hover:text-zinc-200 truncate min-w-0 transition-colors">{activityLabel(e)}</span>
           <span className="flex-shrink-0 text-[10px] text-zinc-700 tabular-nums">{timeAgo(e.ts)}</span>
-        </div>
+        </Link>
       ))}
     </div>
   )
