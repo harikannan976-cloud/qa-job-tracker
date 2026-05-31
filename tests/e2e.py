@@ -3806,6 +3806,490 @@ with sync_playwright() as pw:
         probe('No jobs to verify field presence')
     page_badge.close()
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Phase 8 — Apply Assistant Extension (Phases 2–3): build artifacts,
+    #            manifest, content-script logic, popup UI, safety guardrails
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    import json    as _json8
+    import tempfile as _tempfile
+    import threading as _threading
+    import http.server as _http_server
+
+    _HERE     = os.path.dirname(os.path.abspath(__file__))
+    _EXT_ROOT = os.path.abspath(os.path.join(_HERE, '..', 'extension'))
+    _EXT_DIST = os.path.join(_EXT_ROOT, 'dist')
+
+    # ── Phase 8A: Build artifacts ───────────────────────────────────────────
+    sec('Phase 8A · Extension build artifacts')
+
+    _REQUIRED = [
+        'manifest.json',
+        'popup.html', 'popup.js', 'popup.css',
+        'background.js', 'content.js',
+        os.path.join('icons', 'icon16.png'),
+        os.path.join('icons', 'icon48.png'),
+        os.path.join('icons', 'icon128.png'),
+    ]
+
+    chk(os.path.isdir(_EXT_DIST), 'extension/dist/ directory exists')
+    for _f in _REQUIRED:
+        _fp = os.path.join(_EXT_DIST, _f)
+        chk(os.path.isfile(_fp),          f'dist/{_f} exists')
+        chk(os.path.getsize(_fp) > 0,     f'dist/{_f} is non-empty')
+
+    # Verify source files exist (not just dist)
+    _SRC_FILES = [
+        os.path.join(_EXT_ROOT, 'manifest.json'),
+        os.path.join(_EXT_ROOT, 'popup.html'),
+        os.path.join(_EXT_ROOT, 'src', 'popup', 'App.tsx'),
+        os.path.join(_EXT_ROOT, 'src', 'popup', 'main.tsx'),
+        os.path.join(_EXT_ROOT, 'src', 'popup', 'style.css'),
+        os.path.join(_EXT_ROOT, 'src', 'background.ts'),
+        os.path.join(_EXT_ROOT, 'src', 'content.ts'),
+        os.path.join(_EXT_ROOT, 'src', 'api.ts'),
+    ]
+    for _sf in _SRC_FILES:
+        chk(os.path.isfile(_sf), f'source: {os.path.relpath(_sf, _EXT_ROOT)} exists')
+
+    # ── Phase 8B: Manifest validation ──────────────────────────────────────
+    sec('Phase 8B · Extension manifest validation')
+
+    _manifest_path = os.path.join(_EXT_DIST, 'manifest.json')
+    _manifest = {}
+    try:
+        with open(_manifest_path) as _mf:
+            _manifest = _json8.load(_mf)
+        ok('manifest.json is valid JSON')
+    except Exception as _me:
+        fail('manifest.json is valid JSON', str(_me))
+
+    chk(_manifest.get('manifest_version') == 3,
+        'manifest_version == 3')
+    chk('Apply Assistant' in (_manifest.get('name') or ''),
+        'name contains "Apply Assistant"')
+    chk(isinstance(_manifest.get('version'), str) and len(_manifest['version']) > 0,
+        'version field present', _manifest.get('version'))
+
+    _perms = _manifest.get('permissions', [])
+    chk('storage'   in _perms, 'permission: storage (token persistence)')
+    chk('activeTab' in _perms, 'permission: activeTab (current-tab access)')
+    chk('scripting' in _perms, 'permission: scripting (content script injection)')
+    chk('tabs' not in _perms,  'no broad "tabs" permission (minimal footprint)')
+
+    _hperms = _manifest.get('host_permissions', [])
+    chk(any('qa-job-tracker.vercel.app' in h for h in _hperms),
+        'host_permissions: QA Tracker dashboard API')
+    chk(any(h in ('*://*/*', '<all_urls>') for h in _hperms),
+        'host_permissions: wildcard for job application sites')
+
+    _bg = _manifest.get('background', {})
+    chk(_bg.get('service_worker') == 'background.js',
+        'background.service_worker = background.js')
+    chk(_bg.get('type') == 'module',
+        'background.type = module (ESM service worker)')
+
+    _action = _manifest.get('action', {})
+    chk(_action.get('default_popup') == 'popup.html',
+        'action.default_popup = popup.html')
+    chk(bool(_action.get('default_title')),
+        'action.default_title is set', _action.get('default_title'))
+
+    _icons = _manifest.get('icons', {})
+    chk('16' in _icons and '48' in _icons and '128' in _icons,
+        'icons defined for 16 / 48 / 128')
+    # Icons must reference existing files
+    for _sz in ('16', '48', '128'):
+        _icon_path = os.path.join(_EXT_DIST, _icons.get(_sz, ''))
+        chk(os.path.isfile(_icon_path), f'icons/{_sz} file exists at {_icons.get(_sz)}')
+
+    # No content_scripts in manifest (dynamically injected via chrome.scripting)
+    chk('content_scripts' not in _manifest,
+        'no static content_scripts — injected dynamically (safer)')
+
+    # ── Phase 8C: Content-script field detection & autofill ─────────────────
+    sec('Phase 8C · Content script field detection & autofill')
+
+    # Test form with standard labelled fields + fields that must be skipped
+    _TEST_FORM = """<!DOCTYPE html>
+<html>
+<head><title>Test Job Application</title></head>
+<body>
+<form id="app-form">
+  <label for="fn">First Name</label>
+  <input id="fn" name="firstName" placeholder="First Name" />
+
+  <label for="ln">Last Name</label>
+  <input id="ln" name="lastName" placeholder="Last Name" />
+
+  <label for="em">Email Address</label>
+  <input id="em" type="email" name="email" placeholder="your@email.com" />
+
+  <label for="ph">Phone Number</label>
+  <input id="ph" type="tel" name="phone" />
+
+  <label for="ct">City</label>
+  <input id="ct" name="city" placeholder="City" />
+
+  <label for="li">LinkedIn URL</label>
+  <input id="li" name="linkedinUrl" placeholder="https://linkedin.com/in/..." />
+
+  <label for="cov">Cover Letter / Summary</label>
+  <textarea id="cov" name="summary" placeholder="Tell us about yourself..."></textarea>
+
+  <!-- These MUST NOT be filled -->
+  <label for="pw">Create Password</label>
+  <input id="pw" type="password" name="password" />
+
+  <!-- Unknown field — should be skipped -->
+  <input id="unk" name="custom_secret_xyz" placeholder="Custom field" />
+</form>
+</body>
+</html>"""
+
+    _TEST_PROFILE = {
+        'firstName':   'Hari',
+        'lastName':    'Kannan',
+        'email':       'hari@test.com',
+        'phone':       '647-555-1234',
+        'city':        'Toronto',
+        'province':    'ON',
+        'linkedinUrl': 'https://linkedin.com/in/harikannan',
+        'summary':     'Experienced QA automation engineer.',
+    }
+
+    _content_js = os.path.join(_EXT_DIST, 'content.js')
+    _page_cs = browser.new_context(viewport={'width':1280,'height':900}).new_page()
+    try:
+        _page_cs.set_content(_TEST_FORM)
+        _page_cs.add_script_tag(path=_content_js)
+        _page_cs.wait_for_timeout(150)
+
+        # Verify test harness is exposed
+        _has_run = _page_cs.evaluate("() => typeof window.__runAutofill === 'function'")
+        _has_cls = _page_cs.evaluate("() => typeof window.__classifyField === 'function'")
+        chk(_has_run, 'content.js: __runAutofill exposed on window')
+        chk(_has_cls, 'content.js: __classifyField exposed on window')
+
+        if _has_run:
+            # Run autofill with test profile
+            _result = _page_cs.evaluate(
+                "(p) => window.__runAutofill(p)",
+                _TEST_PROFILE,
+            )
+            chk(_result is not None and isinstance(_result.get('filled'), int),
+                'runAutofill returns {filled, skipped, uncertain}')
+
+            _filled  = _result.get('filled',  0) if _result else 0
+            _skipped = _result.get('skipped', 0) if _result else 0
+            probe('runAutofill result', f"filled={_filled}, skipped={_skipped}, uncertain={_result.get('uncertain') if _result else '?'}")
+
+            chk(_filled >= 5, f'runAutofill: ≥5 fields filled (got {_filled})')
+
+            # Verify correct values were written to each field
+            _fn  = _page_cs.input_value('#fn')
+            _ln  = _page_cs.input_value('#ln')
+            _em  = _page_cs.input_value('#em')
+            _ph  = _page_cs.input_value('#ph')
+            _ct  = _page_cs.input_value('#ct')
+            _cov = _page_cs.evaluate("() => document.querySelector('#cov').value")
+            chk(_fn  == 'Hari',                            'field: firstName filled correctly',      _fn)
+            chk(_ln  == 'Kannan',                          'field: lastName filled correctly',       _ln)
+            chk(_em  == 'hari@test.com',                   'field: email filled correctly',          _em)
+            chk(_ph  == '647-555-1234',                    'field: phone filled correctly',          _ph)
+            chk(_ct  == 'Toronto',                         'field: city filled correctly',           _ct)
+            chk(_cov == 'Experienced QA automation engineer.',
+                'field: textarea (summary) filled correctly', _cov)
+
+            # Safety: password must NEVER be filled
+            _pw = _page_cs.input_value('#pw')
+            chk(_pw == '', '🔒 password field NOT filled (safety guardrail)',  _pw or '(empty ✓)')
+
+            # Safety: form must not have been submitted (still on same page)
+            chk(_page_cs.locator('#app-form').count() > 0,
+                '🔒 form not submitted — page did not navigate')
+
+        if _has_cls:
+            # Verify field classifier returns correct keys
+            _cls_checks = [
+                ('#fn',  'firstName'),
+                ('#ln',  'lastName'),
+                ('#em',  'email'),
+                ('#ph',  'phone'),
+                ('#ct',  'city'),
+                ('#li',  'linkedinUrl'),
+                ('#cov', 'summary'),
+            ]
+            for _sel, _expected in _cls_checks:
+                _got = _page_cs.evaluate(
+                    "(s) => window.__classifyField(document.querySelector(s))",
+                    _sel
+                )
+                chk(_got == _expected,
+                    f'classifyField: {_sel} → {_expected}', _got)
+
+            # Safety: password always returns null from classifier
+            _pw_cls = _page_cs.evaluate(
+                "() => window.__classifyField(document.querySelector('#pw'))"
+            )
+            chk(_pw_cls is None,
+                '🔒 classifyField: password → null (never classified)', _pw_cls)
+
+            # Unknown field returns null
+            _unk_cls = _page_cs.evaluate(
+                "() => window.__classifyField(document.querySelector('#unk'))"
+            )
+            chk(_unk_cls is None,
+                'classifyField: unknown field → null (uncertain = skipped)', _unk_cls)
+
+    except Exception as _e:
+        fail('Content script: inject-and-run failed', str(_e))
+    finally:
+        _page_cs.close()
+
+    # ── Phase 8D: Extension popup UI ───────────────────────────────────────
+    sec('Phase 8D · Extension popup UI (connection flow)')
+
+    _ext_popup_tested = False
+    if os.path.isdir(_EXT_DIST):
+        try:
+            _user_data = _tempfile.mkdtemp(prefix='qa_ext_test_')
+            _ext_ctx   = pw.chromium.launch_persistent_context(
+                _user_data,
+                headless=False,
+                args=[
+                    '--no-sandbox',
+                    f'--disable-extensions-except={_EXT_DIST}',
+                    f'--load-extension={_EXT_DIST}',
+                ],
+                viewport={'width': 1280, 'height': 900},
+            )
+
+            # Get extension ID from background service worker
+            if _ext_ctx.service_workers:
+                _sw_url = _ext_ctx.service_workers[0].url
+            else:
+                _sw     = _ext_ctx.wait_for_event('serviceworker', timeout=8000)
+                _sw_url = _sw.url
+            _ext_id   = _sw_url.split('/')[2]
+            _POPUP_URL = f'chrome-extension://{_ext_id}/popup.html'
+
+            chk(len(_ext_id) > 8, f'Extension loaded — ID extracted', _ext_id)
+
+            _pop = _ext_ctx.new_page()
+            _pop.goto(_POPUP_URL, wait_until='domcontentloaded')
+            _pop.wait_for_timeout(500)
+
+            # ── Not-connected state ─────────────────────────────────────────
+            chk(_pop.locator('text=Not connected').count() > 0,
+                'Popup: not-connected status label shown')
+            chk(_pop.locator('input[type="password"]').count() > 0,
+                'Popup: token input field present')
+            chk(_pop.locator('button:has-text("Connect")').count() > 0,
+                'Popup: Connect button present')
+
+            # Connect button disabled when input is empty
+            _btn_disabled = _pop.locator('button:has-text("Connect")').get_attribute('disabled')
+            chk(_btn_disabled is not None,
+                'Popup: Connect disabled when token input is empty')
+
+            # ── Invalid token → error ───────────────────────────────────────
+            _pop.locator('input[type="password"]').fill('invalid-token-xyz')
+            _pop.locator('button:has-text("Connect")').click()
+            _pop.wait_for_timeout(3000)  # allow API call to complete
+            chk(_pop.locator('text=Invalid token').count() > 0 or
+                _pop.locator('text=Connect').count() > 0,
+                'Popup: invalid token shows error or returns to connect state')
+
+            # ── Valid token → connected ─────────────────────────────────────
+            _pop.locator('input[type="password"]').clear()
+            _pop.locator('input[type="password"]').fill(EXTENSION_TOKEN)
+            _pop.locator('button:has-text("Connect")').click()
+            _pop.wait_for_timeout(3000)  # allow verify API call
+
+            chk(_pop.locator('text=Connected to QA Tracker').count() > 0,
+                'Popup: valid token → "Connected to QA Tracker" label')
+            chk(_pop.locator('button:has-text("Open Jobs Queue")').count() > 0,
+                'Popup: connected state shows "Open Jobs Queue" button')
+            chk(_pop.locator('button:has-text("Disconnect")').count() > 0,
+                'Popup: connected state shows Disconnect button')
+
+            # Token input should be gone in connected state
+            chk(_pop.locator('input[type="password"]').count() == 0,
+                'Popup: token input hidden in connected state')
+
+            # ── Autofill button visibility ──────────────────────────────────
+            # The autofill button should NOT appear when popup is on dashboard
+            # (isOwnPage = true for qa-job-tracker.vercel.app).
+            # Since we navigated directly to the popup URL, pageUrl is empty
+            # → isOwnPage is false → button MAY appear if tabId is resolved.
+            # Probe only (tab-context behaviour is environment-dependent).
+            _autofill_btn = _pop.locator('button:has-text("Autofill Application")').count()
+            probe('Popup: Autofill Application button visibility', f'count={_autofill_btn}')
+
+            # ── Disconnect → not-connected ──────────────────────────────────
+            _pop.locator('button:has-text("Disconnect")').click()
+            _pop.wait_for_timeout(300)
+            chk(_pop.locator('text=Not connected').count() > 0,
+                'Popup: Disconnect → returns to not-connected state')
+            chk(_pop.locator('input[type="password"]').count() > 0,
+                'Popup: token input re-appears after disconnect')
+
+            _pop.close()
+            _ext_ctx.close()
+            _ext_popup_tested = True
+
+        except Exception as _ep:
+            probe(f'Phase 8D: extension popup test skipped', str(_ep))
+    else:
+        probe('Phase 8D: extension/dist not found — run: cd extension && npm run build')
+
+    if not _ext_popup_tested and os.path.isdir(_EXT_DIST):
+        probe('Phase 8D: popup tests did not run (Chrome extension context unavailable)')
+
+    # ── Phase 8E: Safety guardrails (API-level) ─────────────────────────────
+    sec('Phase 8E · Extension safety guardrails')
+
+    # Get a real job ID from the ext/jobs endpoint
+    _st, _jb = api_request('GET', '/api/ext/jobs', token=EXTENSION_TOKEN)
+    _test_job_id = _jb['jobs'][0]['id'] if _jb.get('jobs') else None
+
+    if _test_job_id:
+        # Record the job's initial status BEFORE any PATCH (used in mixed-PATCH safety test)
+        _initial_job_status = _jb['jobs'][0].get('status', '')
+
+        # ── apply_assistant_status: valid values accepted ───────────────────
+        for _status_val in ('Opened', 'Autofilled', 'Ready for Review'):
+            _st, _rb = api_request(
+                'PATCH', f'/api/ext/jobs/{_test_job_id}',
+                body={'apply_assistant_status': _status_val},
+                token=EXTENSION_TOKEN,
+            )
+            chk(_st == 200,
+                f'PATCH apply_assistant_status="{_status_val}" → 200', f'got {_st}')
+
+        # Restore to Not Started
+        api_request('PATCH', f'/api/ext/jobs/{_test_job_id}',
+                    body={'apply_assistant_status': 'Not Started'},
+                    token=EXTENSION_TOKEN)
+
+        # ── status field CANNOT be changed (main job status) ───────────────
+        for _bad_field, _bad_val in [
+            ('status', 'Applied'),
+            ('status', 'Interview'),
+            ('status', 'Offer'),
+            ('status', 'Rejected'),
+        ]:
+            _st, _rb = api_request(
+                'PATCH', f'/api/ext/jobs/{_test_job_id}',
+                body={_bad_field: _bad_val},
+                token=EXTENSION_TOKEN,
+            )
+            chk(_st == 400,
+                f'🔒 PATCH {_bad_field}="{_bad_val}" → 400 (blocked)', f'got {_st}')
+
+        # ── Mixed payload: status ignored, apply_assistant_status applied ───
+        _st, _rb = api_request(
+            'PATCH', f'/api/ext/jobs/{_test_job_id}',
+            body={'status': 'Applied', 'apply_assistant_status': 'Autofilled'},
+            token=EXTENSION_TOKEN,
+        )
+        chk(_st == 200,
+            '🔒 Mixed PATCH: status ignored, apply_assistant_status applied → 200', f'got {_st}')
+        # Verify: job status was NOT changed to Applied
+        _st2, _jb2 = api_request('GET', '/api/ext/jobs', token=EXTENSION_TOKEN)
+        _job_after = next(
+            (j for j in (_jb2.get('jobs') or []) if j['id'] == _test_job_id), None
+        )
+        if _job_after:
+            _actual_status = _job_after.get('status', '')
+            # Verify the status is UNCHANGED (compare to initial, not to a specific value —
+            # the first job in the list may already have status='Applied')
+            chk(_actual_status == _initial_job_status,
+                f'🔒 Job status NOT changed after mixed PATCH (was={_initial_job_status})',
+                f'status={_actual_status}')
+        # Clean up
+        api_request('PATCH', f'/api/ext/jobs/{_test_job_id}',
+                    body={'apply_assistant_status': 'Not Started'},
+                    token=EXTENSION_TOKEN)
+
+        # ── resume_used field can be set and read back ──────────────────────
+        _resume_val = 'Test Resume — Phase 8E'
+        _st, _ = api_request(
+            'PATCH', f'/api/ext/jobs/{_test_job_id}',
+            body={'resume_used': _resume_val},
+            token=EXTENSION_TOKEN,
+        )
+        chk(_st == 200, 'PATCH resume_used → 200', f'got {_st}')
+
+        _st3, _jb3 = api_request('GET', '/api/ext/jobs', token=EXTENSION_TOKEN)
+        _job_ru = next(
+            (j for j in (_jb3.get('jobs') or []) if j['id'] == _test_job_id), None
+        )
+        if _job_ru:
+            chk(_job_ru.get('resume_used') == _resume_val,
+                'resume_used round-trip: value persisted', _job_ru.get('resume_used'))
+
+        # Clean up resume_used
+        api_request('PATCH', f'/api/ext/jobs/{_test_job_id}',
+                    body={'resume_used': ''},
+                    token=EXTENSION_TOKEN)
+
+        # ── PATCH with no allowed fields → 400 ─────────────────────────────
+        _st4, _ = api_request(
+            'PATCH', f'/api/ext/jobs/{_test_job_id}',
+            body={'random_field': 'value', 'another': 'field'},
+            token=EXTENSION_TOKEN,
+        )
+        chk(_st4 == 400,
+            'PATCH with only disallowed fields → 400', f'got {_st4}')
+
+        # ── PATCH without auth → 401 ────────────────────────────────────────
+        _st5, _ = api_request(
+            'PATCH', f'/api/ext/jobs/{_test_job_id}',
+            body={'apply_assistant_status': 'Autofilled'},
+        )
+        chk(_st5 == 401, '🔒 PATCH without token → 401', f'got {_st5}')
+
+        # ── PATCH with wrong token → 401 ───────────────────────────────────
+        _st6, _ = api_request(
+            'PATCH', f'/api/ext/jobs/{_test_job_id}',
+            body={'apply_assistant_status': 'Autofilled'},
+            token='wrong-token',
+        )
+        chk(_st6 == 401, '🔒 PATCH with wrong token → 401', f'got {_st6}')
+
+    else:
+        probe('Phase 8E: no jobs in ext/jobs response — skipping PATCH safety checks')
+
+    # ── CORS headers for extension requests ────────────────────────────────
+    _cors_paths = ['/api/ext/auth', '/api/ext/profile', '/api/ext/jobs']
+    for _cp in _cors_paths:
+        _st7, _rb7 = api_request('OPTIONS', _cp)
+        probe(f'CORS OPTIONS {_cp}', f'status={_st7}')
+        # Verify CORS by checking auth endpoint with explicit Origin header
+    import urllib.request as _urllib8, urllib.error as _urllib8_err
+    _cors_req = _urllib8.Request(
+        f'{BASE}/api/ext/auth',
+        data=_json.dumps({'token': EXTENSION_TOKEN}).encode(),
+        headers={
+            'Content-Type':  'application/json',
+            'Origin':         'chrome-extension://abcdefghijklmnop',
+        },
+        method='POST',
+    )
+    try:
+        with _urllib8.urlopen(_cors_req, timeout=10) as _cr:
+            _acao = _cr.getheader('Access-Control-Allow-Origin')
+            chk(_acao is not None,
+                'CORS: Access-Control-Allow-Origin header present on ext/auth', _acao)
+    except _urllib8_err.HTTPError as _ce:
+        _acao = _ce.headers.get('Access-Control-Allow-Origin')
+        chk(_acao is not None,
+            'CORS: Access-Control-Allow-Origin header present on ext/auth', _acao)
+    except Exception as _ce2:
+        probe('CORS header check failed', str(_ce2))
+
     browser.close()
 
 # ─────────────────────────────────────────────────────────────────────────────

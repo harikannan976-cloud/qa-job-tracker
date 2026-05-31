@@ -28,7 +28,7 @@ const RULES: FieldRule[] = [
   { key: 'firstName',   patterns: [/first[\s_-]?name/i, /fname/i, /given[\s_-]?name/i] },
   { key: 'lastName',    patterns: [/last[\s_-]?name/i, /lname/i, /surname/i, /family[\s_-]?name/i] },
   { key: 'email',       patterns: [/e[\s_-]?mail/i] },
-  { key: 'phone',       patterns: [/phone/i, /mobile/i, /cell/i, /tel/i] },
+  { key: 'phone',       patterns: [/phone/i, /mobile/i, /cell/i, /\btel\b/i] },
   { key: 'city',        patterns: [/\bcity\b/i, /\btown\b/i, /municipality/i] },
   { key: 'province',    patterns: [/province/i, /state/i, /region/i] },
   { key: 'country',     patterns: [/country/i] },
@@ -70,18 +70,22 @@ function getAssociatedLabelText(el: Element): string {
 }
 
 function getClosestLabelText(el: Element): string {
-  // Walk up to find a parent label or a preceding label sibling
-  let node: Element | null = el.parentElement
-  for (let i = 0; i < 4 && node; i++) {
-    const label = node.querySelector('label')
-    if (label && label !== el && label.contains(el) === false) {
-      return label.textContent?.trim() ?? ''
-    }
-    const prev = el.previousElementSibling
-    if (prev?.tagName === 'LABEL') return prev.textContent?.trim() ?? ''
-    node = node.parentElement
+  // Check immediately preceding sibling (common pattern: <label> followed by <input>)
+  const prev = el.previousElementSibling
+  if (prev?.tagName === 'LABEL') return prev.textContent?.trim() ?? ''
+
+  // Check if the element is wrapped inside a label (<label>Text <input /></label>)
+  let parent: Element | null = el.parentElement
+  for (let i = 0; i < 3 && parent; i++) {
+    if (parent.tagName === 'LABEL') return parent.textContent?.trim() ?? ''
+    parent = parent.parentElement
   }
+
   return ''
+  // NOTE: deliberately NOT using node.querySelector('label') — that finds the
+  // first label in the entire subtree (e.g. the whole <form>), which causes
+  // every sibling input to inherit the very first label's text ("First Name"),
+  // poisoning all subsequent classifications.
 }
 
 // ─── Autofill engine ─────────────────────────────────────────────────────────
@@ -147,14 +151,33 @@ function runAutofill(profile: UserProfile): FillResult {
 
 // ─── Message listener ─────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  if (msg.type === 'AUTOFILL' && msg.profile) {
-    const result = runAutofill(msg.profile as UserProfile)
-    reply(result)
-    return true
-  }
-  if (msg.type === 'PING') {
-    reply({ ok: true })
-    return true
-  }
-})
+// Guard: chrome.runtime is undefined when injected via add_script_tag in tests
+if (
+  typeof chrome !== 'undefined' &&
+  typeof chrome.runtime !== 'undefined' &&
+  chrome.runtime.onMessage
+) {
+  chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+    if (msg.type === 'AUTOFILL' && msg.profile) {
+      const result = runAutofill(msg.profile as UserProfile)
+      reply(result)
+      return true
+    }
+    if (msg.type === 'PING') {
+      reply({ ok: true })
+      return true
+    }
+  })
+}
+
+// ─── Test harness exports (used by Playwright injection tests) ────────────────
+// Assigning to window lets Phase 8C tests call these directly without
+// going through the full extension message stack.
+;(window as typeof window & {
+  __runAutofill: typeof runAutofill
+  __classifyField: typeof classifyField
+}).__runAutofill  = runAutofill
+;(window as typeof window & {
+  __runAutofill: typeof runAutofill
+  __classifyField: typeof classifyField
+}).__classifyField = classifyField
