@@ -61,7 +61,7 @@ const DEFAULT_BACK = { href: '/jobs', label: 'All Jobs' }
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function JobDetailPage({ job: initialJob, from }: { job: Job; from?: string }) {
-  const backLink = (from && FROM_MAP[from]) ?? DEFAULT_BACK
+  const backLink: { href: string; label: string } = (from ? FROM_MAP[from] : undefined) ?? DEFAULT_BACK
   const router = useRouter()
   const [job, setJob] = useState(initialJob)
 
