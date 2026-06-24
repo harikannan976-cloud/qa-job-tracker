@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import {
   CheckCircle, AlertTriangle, Clock, Zap, Database,
@@ -561,13 +562,13 @@ export default function AutomationPage() {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {newJobs > 0 && (
-              <a
+              <Link
                 href="/jobs"
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-[12px] font-medium rounded-lg transition-all"
               >
                 <RefreshCw className="w-3 h-3" />
                 View Jobs
-              </a>
+              </Link>
             )}
             <button
               type="button"

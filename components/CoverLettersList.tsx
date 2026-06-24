@@ -54,7 +54,7 @@ export default function CoverLettersList({ jobs }: { jobs: Job[] }) {
         <p className="text-[14px] font-medium text-zinc-400 mb-1.5">No cover letters generated yet</p>
         <p className="text-[13px] text-zinc-600 max-w-sm leading-relaxed">
           The n8n automation generates cover letters for high-scoring jobs (7+).
-          They'll appear here automatically after the next workflow run.
+          They&apos;ll appear here automatically after the next workflow run.
         </p>
         <div className="mt-6 flex items-center gap-2 px-4 py-2.5 bg-[#111118] border border-[#1f1f2e] rounded-xl text-[12px] text-zinc-600">
           <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />
