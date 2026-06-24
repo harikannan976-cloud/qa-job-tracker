@@ -42,7 +42,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     follow_up_date:     '',
     recruiter_contact:  '',
     ...overrides,
-  }
+  } as Job
 }
 
 const PREFS: UserPreferences = {

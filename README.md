@@ -1,3 +1,9 @@
+# QA Job Tracker
+
+[![CI / CD](https://github.com/harikannan976-cloud/qa-job-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/harikannan976-cloud/qa-job-tracker/actions/workflows/ci.yml)
+
+Automated job-discovery pipeline: an **n8n** workflow fetches, de-duplicates, and **AI-scores** QA roles into **Airtable**; this **Next.js** dashboard surfaces them. CI runs lint, typecheck, and unit tests on every push/PR, with a gated production deploy to **Vercel**.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
